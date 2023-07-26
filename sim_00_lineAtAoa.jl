@@ -1,6 +1,5 @@
 # WaterLily and misc addons
 using WaterLily
-using ParametricBodies
 # Standard modules
 using StaticArrays
 using GLMakie
@@ -67,9 +66,6 @@ function make_sim(; L=32, Re=1e3, U=1, n=8, m=4, T=Float32, mem=Array)
         return p'*p - 2
     end
     body = AutoBody(sdf, map)
-
-#    ellipse(θ,t) = 0.5f0L*SA[1+cos(θ),0.12f0sin(θ)] # define parametric curve
-#    body = ParametricBody(ellipse,(0,π);map,T,mem)  # automatically finds closest point
 
     return Simulation((n*L, m*L), (U, 0), L; ν=U*L/Re, body, T, mem)
 end
