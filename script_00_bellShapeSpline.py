@@ -71,7 +71,8 @@ iSorted = np.argsort(ts)
 refDeformedShape = [refDeformedShape[i] for i in iSorted]
 
 # %% Interactive plot.
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(9, 9))
+plt.subplots_adjust(bottom=0.3)
 ax.set_xlabel("Bell width")
 ax.set_ylabel("Bell height")
 ax.plot(xy[:, 0], xy[:, 1], "k--", lw=2)
@@ -82,45 +83,74 @@ colours = plt.cm.viridis(np.linspace(0, 1, len(refDeformedShape)))
 for i in range(len(refDeformedShape)):
     ax.plot(refDeformedShape[i]["x"], refDeformedShape[i]["y"], "-", c=colours[i])
 
-sldr_ax = fig.add_axes([0.15, 0.01, 0.7, 0.05])
-sldr = matplotlib.widgets.Slider(sldr_ax, 'Var 1', 0, 1, valinit=0, valfmt="%.1f")
+sldr_ax1 = fig.add_axes([0.15, 0.08, 0.7, 0.05])
+sldr1 = matplotlib.widgets.Slider(sldr_ax1, 'Var 1', 0, 1, valinit=0, valfmt="%.1f")
+sldr_ax2 = fig.add_axes([0.15, 0.01, 0.7, 0.05])
+sldr2 = matplotlib.widgets.Slider(sldr_ax2, 'Var 2', 0, 1, valinit=0, valfmt="%.1f")
 
 lns = None
 patches = None
+texts = None
+
+def rotatePoint(pt, x0, theta):
+    x = pt - x0
+    xr = x[0]*np.cos(theta) - x[1]*np.sin(theta)
+    yr = x[1]*np.cos(theta) + x[0]*np.sin(theta)
+    return np.array([xr, yr]) + x0
 
 def onChanged(val):
-    global lns, patches
+    global lns, patches, texts
     if lns is not None:
         for c in lns:
             c.remove()
         for c in patches:
             c.remove()
+        for c in texts:
+            c.remove()
 
-    v1 = sldr.val
-
-    cps = np.array([
+    cps0 = np.array([
         [0, 0.12],
         [0.35, 0.05],
         [0.97, -0.55],
-        [1.0 + v1, -1.15],
+        [1.0, -1.15],
         [0.92, -0.6],
         [0.3, -0.19],
         [0, -0.12]
     ])
 
+    # Apply 1st rotation
+    cps = np.copy(cps0)
+    for i in range(1, cps.shape[0]-1):
+        cps[i, :] = rotatePoint(cps[i, :], [0, 0], sldr1.val*5./180.*np.pi)
+
+    # Apply 2nd rotation
+    x0 = (cps[1, :] + cps[-2, :])/2.
+    for i in range(2, cps.shape[0]-2):
+        cps[i, :] = rotatePoint(cps[i, :], x0, sldr2.val*20./180.*np.pi)
+
+    # Annotate CP segment lengths.
+    texts = []
+    for i in range(cps0.shape[0]-1):
+        x0 = np.sum(cps[i:i+2, :], axis=0) / 2.
+        ds = np.linalg.norm(cps[i+1, :] - cps[i, :])
+        texts.append(ax.text(x0[0], x0[1], "{:.3f}".format(ds), va="center", ha="center"))
+
+    # Compute the spline and plot the outline.
     s = np.linspace(0, 1, 101)
     p = np.array([bspline(cps, u, d=2) for u in s])
-
     lns = ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
     lns += ax.plot(p[:, 0], p[:, 1], "m-")
 
+    # Fill-in the contour.
     patches = [ax.add_patch(mpatches.Polygon(p[:, :2], facecolor="m", alpha=0.25))]
 
+    # Compute cross-section area.
     area = polyArea(p[:, 0], p[:, 1])
     ax.set_title("Area = {:.4f} units$^2$".format(area))
 
     return lns
 
-sldr.on_changed(onChanged)
+sldr1.on_changed(onChanged)
+sldr2.on_changed(onChanged)
 
 lns = onChanged(0.)
