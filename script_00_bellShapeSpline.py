@@ -53,14 +53,21 @@ def bspline(cv, s, d=3):
 def polyArea(x, y):
     return 0.5*np.abs(np.dot(x, np.roll(y, 1) ) - np.dot(y, np.roll(x, 1)))
 
+# Rotate a point around a different point
+def rotatePoint(pt, x0, theta):
+    x = pt - x0
+    xr = x[0]*np.cos(theta) - x[1]*np.sin(theta)
+    yr = x[1]*np.cos(theta) + x[0]*np.sin(theta)
+    return np.array([xr, yr]) + x0
+
 # %% Fit a b-spline to data of the undeformedshape
 n = 501
 xy = np.array([bellShape(s) for s in np.linspace(0., 1., n)])
 t = np.array([bellThickness(s) for s in np.linspace(0., 1., n)])
 
 # %% Read reference data for the deformed shape.
-# From: Bajacaret2009_fig6_bellMotion_cropped
 
+# From: Bajacaret2009_fig6_bellMotion_cropped
 ts = []
 refDeformedShape = []
 for f in os.listdir("./dataset_01_medusae"):
@@ -69,6 +76,35 @@ for f in os.listdir("./dataset_01_medusae"):
         refDeformedShape.append(pandas.read_csv(os.path.join("dataset_01_medusae", f), header=None, names=["x", "y"]))
 iSorted = np.argsort(ts)
 refDeformedShape = [refDeformedShape[i] for i in iSorted]
+
+# From Costello 2020 fig 9
+# Data contain three snapshots of two cycles. Upper and lower part of the medusa
+# (aboral and subumbrellar surfaces) for each.
+data_Costello = pandas.read_csv("./dataset_01_medusae/deformedShapeHistory_Costello2020_fig9.csv", header=None)
+colours = plt.cm.jet(np.linspace(0, 1, 3))
+linestyles = ["-", "--"]
+fig, ax = plt.subplots()
+for j in range(2):
+    for i in range(3):
+        i0 = j*4*3+i*4
+        # print(j, i, i0)
+        # Retrieve the data from the ordered table.
+        df = data_Costello[range(i0, i0+4)]
+        df.columns = ["xl", "yl", "xu", "yu"]
+
+        # Find the origin of each frame. Assumed at mid-width and top.
+        x0 = (df["xu"].max() + df["xu"].min())/2.
+        y0 = df["yu"].max()
+        # ax.plot(x0, y0, "o", c=colours[i])
+
+        # Plot the data shifted to the origin for each snapshot.
+        ax.plot(df["xl"]-x0+i, df["yl"]-y0, linestyles[j]+"+", c=colours[i])
+        ax.plot(df["xu"]-x0+i, df["yu"]-y0, linestyles[j]+"x", c=colours[i])
+        # ax.plot(np.abs(df["xl"]-x0)+i, df["yl"]-y0, linestyles[j]+"+", c=colours[i])
+        # ax.plot(np.abs(df["xu"]-x0)+i, df["yu"]-y0, linestyles[j]+"x", c=colours[i])
+
+
+print(a)
 
 # %% Interactive plot.
 fig, ax = plt.subplots(figsize=(9, 9))
@@ -83,20 +119,16 @@ colours = plt.cm.viridis(np.linspace(0, 1, len(refDeformedShape)))
 for i in range(len(refDeformedShape)):
     ax.plot(refDeformedShape[i]["x"], refDeformedShape[i]["y"], "-", c=colours[i])
 
-sldr_ax1 = fig.add_axes([0.15, 0.08, 0.7, 0.05])
+sldr_ax1 = fig.add_axes([0.15, 0.15, 0.7, 0.05])
 sldr1 = matplotlib.widgets.Slider(sldr_ax1, 'Var 1', 0, 1, valinit=0, valfmt="%.1f")
-sldr_ax2 = fig.add_axes([0.15, 0.01, 0.7, 0.05])
+sldr_ax2 = fig.add_axes([0.15, 0.08, 0.7, 0.05])
 sldr2 = matplotlib.widgets.Slider(sldr_ax2, 'Var 2', 0, 1, valinit=0, valfmt="%.1f")
+sldr_ax3 = fig.add_axes([0.15, 0.01, 0.7, 0.05])
+sldr3 = matplotlib.widgets.Slider(sldr_ax3, 'Var 3', 0, 1, valinit=0, valfmt="%.1f")
 
 lns = None
 patches = None
 texts = None
-
-def rotatePoint(pt, x0, theta):
-    x = pt - x0
-    xr = x[0]*np.cos(theta) - x[1]*np.sin(theta)
-    yr = x[1]*np.cos(theta) + x[0]*np.sin(theta)
-    return np.array([xr, yr]) + x0
 
 def onChanged(val):
     global lns, patches, texts
@@ -108,6 +140,10 @@ def onChanged(val):
         for c in texts:
             c.remove()
 
+    # ---
+
+    # Version 1 - rotate points of the bounding spline.
+    # => does not preserve volume.
     cps0 = np.array([
         [0, 0.12],
         [0.35, 0.05],
@@ -120,13 +156,30 @@ def onChanged(val):
 
     # Apply 1st rotation
     cps = np.copy(cps0)
-    for i in range(1, cps.shape[0]-1):
+    cps[1, :] = rotatePoint(cps[1, :], cps[0, :], sldr1.val*5./180.*np.pi)
+    cps[-2, :] = rotatePoint(cps[-2, :], cps[-1, :], sldr1.val*5./180.*np.pi)
+    for i in range(2, cps.shape[0]-2):
         cps[i, :] = rotatePoint(cps[i, :], [0, 0], sldr1.val*5./180.*np.pi)
 
     # Apply 2nd rotation
+    cps[2, :] = rotatePoint(cps[2, :], cps[1, :], sldr2.val*20./180.*np.pi)
+    cps[-3, :] = rotatePoint(cps[-3, :], cps[-2, :], sldr2.val*20./180.*np.pi)
     x0 = (cps[1, :] + cps[-2, :])/2.
-    for i in range(2, cps.shape[0]-2):
+    for i in range(3, cps.shape[0]-3):
         cps[i, :] = rotatePoint(cps[i, :], x0, sldr2.val*20./180.*np.pi)
+
+    # Rotate the tip.
+    x0 = (cps[2, :] + cps[4, :])/2.
+    cps[3, :] = rotatePoint(cps[3, :], x0, sldr3.val*90./180.*np.pi)
+
+    # Version 2 - work with a "backbone" spline and derive CP positions from that
+    #   based on local thickness and normal vectors. Scale the thickness iteratively
+    #   to enforce volume conservation to a particular threshold.
+    # =>
+
+    # TODO
+
+    # ---
 
     # Annotate CP segment lengths.
     texts = []
@@ -152,5 +205,6 @@ def onChanged(val):
 
 sldr1.on_changed(onChanged)
 sldr2.on_changed(onChanged)
+sldr3.on_changed(onChanged)
 
 lns = onChanged(0.)
