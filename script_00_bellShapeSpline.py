@@ -84,6 +84,8 @@ data_Costello = pandas.read_csv("./dataset_01_medusae/deformedShapeHistory_Coste
 colours = plt.cm.jet(np.linspace(0, 1, 3))
 linestyles = ["-", "--"]
 fig, ax = plt.subplots()
+ax.set_xlabel("Bell width coordinate")
+ax.set_ylabel("Bell height coordinate")
 for j in range(2):
     for i in range(3):
         i0 = j*4*3+i*4
@@ -98,15 +100,111 @@ for j in range(2):
         # ax.plot(x0, y0, "o", c=colours[i])
 
         # Plot the data shifted to the origin for each snapshot.
-        ax.plot(df["xl"]-x0+i, df["yl"]-y0, linestyles[j]+"+", c=colours[i])
-        ax.plot(df["xu"]-x0+i, df["yu"]-y0, linestyles[j]+"x", c=colours[i])
-        # ax.plot(np.abs(df["xl"]-x0)+i, df["yl"]-y0, linestyles[j]+"+", c=colours[i])
-        # ax.plot(np.abs(df["xu"]-x0)+i, df["yu"]-y0, linestyles[j]+"x", c=colours[i])
+        # ax.plot(df["xl"]-x0+i, df["yl"]-y0, linestyles[j]+"+", c=colours[i])
+        # ax.plot(df["xu"]-x0+i, df["yu"]-y0, linestyles[j]+"x", c=colours[i])
+        ax.plot(np.abs(df["xl"]-x0)+i/2, df["yl"]-y0, linestyles[j]+"+", alpha=0.25, c=colours[i])
+        ax.plot(np.abs(df["xu"]-x0)+i/2, df["yu"]-y0, linestyles[j]+"x", alpha=0.25, c=colours[i])
 
+ylim = ax.get_ylim()
+ax.set_ylim(ylim)
+ax.set_xlim((-0.1, 1.6))
+ax.xaxis.set_ticks(np.arange(0, 1.51, 0.25))
 
-print(a)
+for i in range(4):
+    ax.vlines(i/2., ylim[0], ylim[1], color="k", linestyle="dashed")
+
+s = np.linspace(0, 1, 101)
+
+# 1st cycle, upper
+cps = np.array([
+    [0, 0.],
+    [0.05, 0],
+    # [0.25, -0.09],
+    # [0.46, -0.38],
+    [0.472, -0.25],
+    [0.389, -0.52]
+])
+pu = np.array([bspline(cps, u, d=2) for u in s])
+ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[0])
+
+# 1st cycle lower
+cps = np.array([
+    [0, -0.2],
+    [0.15, -0.2],
+    [0.4, -0.35],
+    [0.389, -0.52]
+])
+pl = np.array([bspline(cps, u, d=2) for u in s])
+ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[0])
+
+xy = np.vstack([pu, np.flipud(pl[:-1, :])])
+area = polyArea(xy[:, 0], xy[:, 1])
+ax.text(0, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+
+# 2nd cycle upper
+cps = np.array([
+    [0.5, 0.],
+    # [0.62, 0.],
+    # [0.89, -0.28],
+    # [0.89, -0.56]
+    [0.62, 0.],
+    [0.81, -0.2],
+    [0.83, -0.35],
+    [0.9, -0.48]
+])
+# p = np.array([bspline(cps, u, d=2) for u in s])
+# lns = ax.plot(cps[:, 0], cps[:, 1], "o--", c="black", ms=7)
+# lns += ax.plot(p[:, 0], p[:, 1], "m-")
+
+pu = np.array([bspline(cps, u, d=2) for u in s])
+ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[1])
+
+# 2nd cycle lower
+cps = np.array([
+    [0.5, -0.2],
+    # [0.6, -0.2],
+    # [0.781, -0.28],
+    # [0.89, -0.56]
+    [0.66, -0.2],
+    [0.81, -0.43],
+    [0.9, -0.48]
+])
+
+pl = np.array([bspline(cps, u, d=2) for u in s])
+ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[1])
+
+xy = np.vstack([pu, np.flipud(pl[:-1, :])])
+area = polyArea(xy[:, 0], xy[:, 1])
+ax.text(0.5, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+
+# 3rd cycle upper
+cps = np.array([
+    [1., 0],
+    [1.14, 0.],
+    [1.4, -0.34],
+    [1.27, -0.66],
+])
+pu = np.array([bspline(cps, u, d=2) for u in s])
+ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[2])
+
+# 3rd cycle lower
+cps = np.array([
+    [1., -0.18],
+    [1.12, -0.18],
+    [1.3, -0.34],
+    [1.27, -0.66],
+])
+pl = np.array([bspline(cps, u, d=2) for u in s])
+ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[2])
+
+xy = np.vstack([pu, np.flipud(pl[:-1, :])])
+area = polyArea(xy[:, 0], xy[:, 1])
+ax.text(1., 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+
+plt.savefig("./outputs/bellShapeEvolution_Costello2020_data.png", dpi=200, bbox_inches="tight")
 
 # %% Interactive plot.
+
 fig, ax = plt.subplots(figsize=(9, 9))
 plt.subplots_adjust(bottom=0.3)
 ax.set_xlabel("Bell width")
