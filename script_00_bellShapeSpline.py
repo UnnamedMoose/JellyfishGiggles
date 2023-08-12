@@ -115,6 +115,8 @@ for i in range(4):
 
 s = np.linspace(0, 1, 101)
 
+regressedShapes = []
+
 # 1st cycle, upper
 cps = np.array([
     [0, 0.],
@@ -124,7 +126,9 @@ cps = np.array([
     [0.472, -0.25],
     [0.389, -0.52]
 ])
+# ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pu = np.array([bspline(cps, u, d=2) for u in s])
+regressedShapes.append(pu)
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[0])
 
 # 1st cycle lower
@@ -134,12 +138,15 @@ cps = np.array([
     [0.4, -0.35],
     [0.389, -0.52]
 ])
+# ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pl = np.array([bspline(cps, u, d=2) for u in s])
+regressedShapes.append(pl)
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[0])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
 area = polyArea(xy[:, 0], xy[:, 1])
 ax.text(0, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot1.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
 
 # 2nd cycle upper
 cps = np.array([
@@ -152,11 +159,9 @@ cps = np.array([
     [0.83, -0.35],
     [0.9, -0.48]
 ])
-# p = np.array([bspline(cps, u, d=2) for u in s])
-# lns = ax.plot(cps[:, 0], cps[:, 1], "o--", c="black", ms=7)
-# lns += ax.plot(p[:, 0], p[:, 1], "m-")
-
+# ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pu = np.array([bspline(cps, u, d=2) for u in s])
+regressedShapes.append(pu)
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[1])
 
 # 2nd cycle lower
@@ -169,13 +174,15 @@ cps = np.array([
     [0.81, -0.43],
     [0.9, -0.48]
 ])
-
+# ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pl = np.array([bspline(cps, u, d=2) for u in s])
+regressedShapes.append(pl)
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[1])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
 area = polyArea(xy[:, 0], xy[:, 1])
 ax.text(0.5, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot2.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
 
 # 3rd cycle upper
 cps = np.array([
@@ -184,7 +191,9 @@ cps = np.array([
     [1.4, -0.34],
     [1.27, -0.66],
 ])
+# ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pu = np.array([bspline(cps, u, d=2) for u in s])
+regressedShapes.append(pu)
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[2])
 
 # 3rd cycle lower
@@ -194,17 +203,105 @@ cps = np.array([
     [1.3, -0.34],
     [1.27, -0.66],
 ])
+# ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pl = np.array([bspline(cps, u, d=2) for u in s])
+regressedShapes.append(pl)
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[2])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
 area = polyArea(xy[:, 0], xy[:, 1])
 ax.text(1., 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot3.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
 
 plt.savefig("./outputs/bellShapeEvolution_Costello2020_data.png", dpi=200, bbox_inches="tight")
 
-# %% Interactive plot.
+# %% Figure out a way to describe each profile using the same set of control points.
 
+halfThicknesses = np.array([
+    [0.101, 0.099, 0.090],
+    [0.081, 0.102, 0.077],
+    [0.063, 0.069, 0.048],
+# [0.033, 0.031, 0.024],
+    [0.033, 0.041, 0.0338],
+    [0.011, 0.011, 0.011],
+])
+
+lengths = np.array([
+    [0.080, 0.052, 0.103],
+    [0.118, 0.105, 0.163],
+    [0.194, 0.250, 0.194],
+    [0.228, 0.179, 0.228],
+    [0.250, 0.165, 0.250],
+])
+
+thetas = np.array([
+    [0., 0., 0.],
+# [0.440, 0.147, 0.427],
+# [0.462, 0.831, 1.279],
+# [1.102, 1.570, 1.437],
+# [2.200, 0.125, 2.200],
+    [0.380, 0.080, 0.250],
+    [0.400, 0.731, 1.100],
+    [0.900, 1.670, 1.370],
+    [2.200, 0.125, 2.100],
+])
+
+# Idea 1 - define a central "backbone" with control points offset by a normal distance
+# from it. Moving the backbone will automatically move the control points. Adjusting the
+# normal distance will allow fine-tuning of contained volume to ensure mass continuity.
+
+fig, ax = plt.subplots()
+ax.set_xlabel("Bell width coordinate")
+ax.set_ylabel("Bell height coordinate")
+
+# Plot the shapes.
+for i in range(2):
+    for j in range(3):
+        ax.plot(regressedShapes[j*2+i][:, 0], regressedShapes[j*2+i][:, 1], "k-", alpha=0.5)
+
+# Set up axes.
+ylim = ax.get_ylim()
+ax.set_ylim(ylim)
+ax.set_xlim((-0.1, 1.6))
+ax.xaxis.set_ticks(np.arange(0, 1.51, 0.25))
+for i in range(4):
+    ax.vlines(i/2., ylim[0], ylim[1], color="k", linestyle="dashed")
+
+# Create the backbone and control points.
+for j in range(3):
+    cps_u, cps_l = [], []
+
+    xLast = np.array([-lengths[0, j]/2. + j*0.5, -halfThicknesses[0, j]])
+    for i in range(len(halfThicknesses)):
+        xNew = xLast + [lengths[i, j], 0.]
+        xNew = rotatePoint(xNew, xLast, -thetas[i,j ])
+        xMid = (xLast + xNew) / 2.
+        vTan = (xNew - xLast) / np.linalg.norm(xNew - xLast)
+        vPer = np.array([-vTan[1], vTan[0]])
+
+        p0 = xMid + halfThicknesses[i, j]*vPer
+        p1 = xMid - halfThicknesses[i, j]*vPer
+        cps_u.append(p0)
+        cps_l.append(p1)
+
+        ax.plot([xLast[0], xNew[0]], [xLast[1], xNew[1]], "ko-", lw=4, alpha=0.25)
+        ax.plot(xMid[0], xMid[1], "rs")
+        ax.plot([p0[0], p1[0]], [p0[1], p1[1]], "r--")
+
+        xLast = xNew
+
+    cps = np.vstack([cps_u, np.flipud(cps_l)])
+    xy = np.array([bspline(cps, u, d=2) for u in s])
+    area = polyArea(xy[:, 0], xy[:, 1])
+
+    ax.plot(cps[:, 0], cps[:, 1], "ro")
+    ax.plot(xy[:, 0], xy[:, 1], lw=2, c=colours[j])
+    ax.text(0.5*j, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+
+plt.savefig("./outputs/bellShapeEvolution_Costello2020_kinematicsModel.png", dpi=200, bbox_inches="tight")
+
+# %% Interactive plot.
+print(a)
 fig, ax = plt.subplots(figsize=(9, 9))
 plt.subplots_adjust(bottom=0.3)
 ax.set_xlabel("Bell width")
