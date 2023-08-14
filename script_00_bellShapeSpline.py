@@ -14,6 +14,7 @@ import platform
 import matplotlib.patches as mpatches
 import scipy.interpolate
 import matplotlib.animation as animation
+import scipy.optimize
 
 font = {"family": "serif",
         "weight": "normal",
@@ -234,7 +235,8 @@ plt.savefig("./outputs/bellShapeEvolution_Costello2020_data.png", dpi=200, bbox_
 # %% Figure out a way to describe each profile using the same set of control points.
 # This also has to be done using a single, continuous curve in a way that preserves volume.
 
-def profileFromParams(length, halfThickness, theta, s=np.linspace(0, 1, 101), ax=None, dxPlot=0, colour="b"):
+def profileFromParams(length, halfThickness, theta, s=np.linspace(0, 1, 101),
+                      ax=None, dxPlot=0, colour="b"):
     """
     Creates a jellyfish profile from a set of segment lengths, thicknesses and rotation angles.
     Can also provide additional parameters to plot the profile on an external figure.
@@ -399,6 +401,44 @@ for i in range(L.shape[0]):
 
 plt.savefig("./outputs/bellShapeEvolution_Costello2020_kinematicsParams.png", dpi=200, bbox_inches="tight")
 
+# %% Test applying volume conservation
+
+def thicknessTarget(x, Lfit, thkFit, thetaFit):
+    dt = (x-0.5)/0.5*0.01
+    xy1, cps1, area1 = profileFromParams(Lfit, thkFit+dt, thetaFit)
+    return abs(area1 - 0.0644)
+
+def NewtRaph(func, x0, funcKwargs={}, Nmax=100, tol=5e-18):
+    """ Newton-Rhapson method for root-finding in 1D
+    Arguments
+    ---------
+        @parm func - pointer to a function which accepts x and returns y(x) and dy/dx(x)
+        @param x0 - initial guess of the root
+        @param funcKwargs - dictionary of optional keywords used by the function
+        @param Nmax - max no. iterations
+        @param tol - tolerance (absolute!) down to which y(x)=0 is computed
+    Returns
+    --------
+        @param x - value of x where y(x) == 0
+    """
+    x = x0
+    for i in range(Nmax):
+        f, df = func(x, **funcKwargs)
+        dx = f/df
+        x -= dx
+        print(i, f, df, dx)
+        if np.abs(dx) < tol:
+            return x
+    raise RuntimeError("Did not converge within {:d} iterations".format(Nmax))
+
+# dt = NewtRaph(thicknessTarget, 0.01, funcKwargs={"Lfit": Lfit, "thkFit": thkFit, "thetaFit": thetaFit})
+
+res = scipy.optimize.minimize(
+    thicknessTarget, [0.],
+    args=(Lfit, thkFit, thetaFit),
+    bounds=[(0, 1)], constraints=(),
+    tol=1e-12, callback=None, options={"disp": False}, method="SLSQP")
+
 # %% Animate the jellyfish!
 
 # Set up the plot
@@ -426,15 +466,28 @@ class JellyfishPlot(object):
             for c in self.plotObjects:
                 c.remove()
 
+        # Compute the point in the period.
         t = i/self.T % 1
 
+        # Get parameters for each control point.
         Lfit, thkFit, thetaFit = [], [], []
         for j in range(L.shape[0]):
             Lfit.append(smoothWithSpline(timeVals, L[j, :], t))
             thkFit.append(smoothWithSpline(timeVals, thk[j, :], t))
             thetaFit.append(smoothWithSpline(timeVals, theta[j, :], t))
 
+        # Correct thickness to achieve target cross-section area.
+        res = scipy.optimize.minimize(
+            thicknessTarget, [0.],
+            args=(Lfit, thkFit, thetaFit),
+            bounds=[(0, 1)], constraints=(),
+            tol=1e-12, callback=None, options={"disp": False}, method="SLSQP")
+        thkFit += (res.x[0]-0.5)/0.5*0.01
+
+        # Compute the profile.
         xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
+
+        # Plot.
         self.plotObjects = ax.plot(xy[:, 0], xy[:, 1], c="r", lw=2)
         self.plotObjects += ax.plot(cps[:, 0], cps[:, 1], "ko--", lw=1, alpha=0.25)
         ax.set_title("A={:.4f} units$^2$".format(area))
