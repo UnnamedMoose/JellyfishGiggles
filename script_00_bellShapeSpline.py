@@ -24,12 +24,14 @@ matplotlib.rc("font", **font)
 matplotlib.rcParams["figure.figsize"] = (9, 6)
 
 # %% Helper function.
+
+
 def niceFig(xlab=None, ylab=None, figsize=None):
     fig, ax = plt.subplots(1, figsize=figsize)
     ax.tick_params(axis='both', reset=False, which='both', length=5, width=2)
     ax.tick_params(axis='y', direction='out', which="both")
     ax.tick_params(axis='x', direction='out', which="both")
-    for spine in ['top', 'right','bottom','left']:
+    for spine in ['top', 'right', 'bottom', 'left']:
         ax.spines[spine].set_linewidth(2)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
@@ -37,24 +39,28 @@ def niceFig(xlab=None, ylab=None, figsize=None):
     ax.set_ylabel(ylab)
     return fig, ax
 
+
 # %% Jellyfish properties.
 # Create a function that approximates the shape.
-def bellShape(s):
-    return np.array([
-        np.sign(s)*(1.-np.cos(np.clip(np.abs(s), 0, 1)*np.pi/2.))**0.75,
-        np.sin(np.pi/2. - np.clip(np.abs(s), 0, 1)*np.pi/2.)**0.5 - 1.
-    ])
+# def bellShape(s):
+#     return np.array([
+#         np.sign(s)*(1.-np.cos(np.clip(np.abs(s), 0, 1)*np.pi/2.))**0.75,
+#         np.sin(np.pi/2. - np.clip(np.abs(s), 0, 1)*np.pi/2.)**0.5 - 1.
+#     ])
 
-# Bell thickness
-def bellThickness(s):
-    return 0.24 * (np.cos(np.abs(s)*np.pi/2.))**0.65
+# # Bell thickness
+# def bellThickness(s):
+#     return 0.24 * (np.cos(np.abs(s)*np.pi/2.))**0.65
 
 # %% B-spline
+
+
 def CoxDeBoor(knots, u, k, d, count):
     if (d == 0):
         return int((knots[k] <= u and u < knots[k+1]) or ((u >= (1.0-1e-12)) and (k == (count-1))))
     return ((u-knots[k]) / max(1e-12, knots[k+d] - knots[k])) * CoxDeBoor(knots, u, k, (d-1), count) \
         + ((knots[k+d+1]-u) / max(1e-12, knots[k+d+1] - knots[k+1])) * CoxDeBoor(knots, u, (k+1), (d-1), count)
+
 
 def bspline(cv, s, d=3):
     count = len(cv)
@@ -64,11 +70,14 @@ def bspline(cv, s, d=3):
         pt += CoxDeBoor(knots, s, k, d, count) * cv[k]
     return pt
 
+
 # %% Misc
+
 
 # Implementation of Shoelace formula
 def polyArea(x, y):
-    return 0.5*np.abs(np.dot(x, np.roll(y, 1) ) - np.dot(y, np.roll(x, 1)))
+    return 0.5*np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
 
 # Rotate a point around a different point
 def rotatePoint(pt, x0, theta):
@@ -77,10 +86,11 @@ def rotatePoint(pt, x0, theta):
     yr = x[1]*np.cos(theta) + x[0]*np.sin(theta)
     return np.array([xr, yr]) + x0
 
+
 # %% Fit a b-spline to data of the undeformedshape
-n = 501
-xy = np.array([bellShape(s) for s in np.linspace(0., 1., n)])
-t = np.array([bellThickness(s) for s in np.linspace(0., 1., n)])
+# n = 501
+# xy = np.array([bellShape(s) for s in np.linspace(0., 1., n)])
+# t = np.array([bellThickness(s) for s in np.linspace(0., 1., n)])
 
 # %% Read reference data for the deformed shape.
 
@@ -403,10 +413,12 @@ plt.savefig("./outputs/bellShapeEvolution_Costello2020_kinematicsParams.png", dp
 
 # %% Test applying volume conservation
 
+
 def thicknessTarget(x, Lfit, thkFit, thetaFit):
     dt = (x-0.5)/0.5*0.01
     xy1, cps1, area1 = profileFromParams(Lfit, thkFit+dt, thetaFit)
     return abs(area1 - 0.0644)
+
 
 def NewtRaph(func, x0, funcKwargs={}, Nmax=100, tol=5e-18):
     """ Newton-Rhapson method for root-finding in 1D
@@ -431,7 +443,6 @@ def NewtRaph(func, x0, funcKwargs={}, Nmax=100, tol=5e-18):
             return x
     raise RuntimeError("Did not converge within {:d} iterations".format(Nmax))
 
-# dt = NewtRaph(thicknessTarget, 0.01, funcKwargs={"Lfit": Lfit, "thkFit": thkFit, "thetaFit": thetaFit})
 
 res = scipy.optimize.minimize(
     thicknessTarget, [0.],
@@ -441,23 +452,12 @@ res = scipy.optimize.minimize(
 
 # %% Animate the jellyfish!
 
-# Set up the plot
-fig, ax = niceFig(figsize=(8, 10))
-ax.set_ylabel("Bell height coordinate")
-ax.set_xlabel("Bell width coordinate")
-ax.set_xlim((0, 0.6))
-ax.set_ylim((-0.8, 0.2))
-ax.set_aspect("equal", "box")
-
-# TODO Plot constant elements
 
 class JellyfishPlot(object):
-    def __init__(self, T):#, arr_c, arr_v):
-        # self.cs = cs
+    def __init__(self, T, ax):
         self.T = T
         self.plotObjects = None
-        # self.arr_c = arr_c
-        # self.arr_v = arr_v
+        self.ax = ax
 
     def animate(self, i):
         # for c in self.cs.collections:
@@ -488,17 +488,32 @@ class JellyfishPlot(object):
         xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
 
         # Plot.
-        self.plotObjects = ax.plot(xy[:, 0], xy[:, 1], c="r", lw=2)
-        self.plotObjects += ax.plot(cps[:, 0], cps[:, 1], "ko--", lw=1, alpha=0.25)
-        ax.set_title("A={:.4f} units$^2$".format(area))
+        self.plotObjects = self.ax.plot(xy[:, 0], xy[:, 1], c="r", lw=2)
+        self.plotObjects += self.ax.plot(cps[:, 0], cps[:, 1], "ko--", lw=1, alpha=0.25)
+        self.ax.set_title("A={:.4f} units$^2$".format(area))
 
         return self.plotObjects
 
-jellyfishPlot = JellyfishPlot(150)
 
-anim = animation.FuncAnimation(fig, jellyfishPlot.animate, repeat=False, frames=range(150))
-writer = animation.PillowWriter(fps=20)
-anim.save('./outputs/jellyfishAnimation.gif', writer=writer, dpi=200)
+animate = False
+
+# Set up the plot
+fig, ax = niceFig(figsize=(8, 10))
+ax.set_ylabel("Bell height coordinate")
+ax.set_xlabel("Bell width coordinate")
+ax.set_xlim((0, 0.6))
+ax.set_ylim((-0.8, 0.2))
+ax.set_aspect("equal", "box")
+
+# Create animator instance.
+jellyfishPlot = JellyfishPlot(150, ax)
+
+if animate:
+    anim = animation.FuncAnimation(fig, jellyfishPlot.animate, repeat=False, frames=range(150))
+    writer = animation.PillowWriter(fps=20)
+    anim.save('./outputs/jellyfishAnimation.gif', writer=writer, dpi=200)
+else:
+    jellyfishPlot.animate(1)
 
 # %% Interactive plot.
 # print(a)
