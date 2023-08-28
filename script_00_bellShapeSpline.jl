@@ -187,6 +187,50 @@ function thicknessTarget(x, Lfit, thkFit, thetaFit, aTarget=0.0644)
     return abs(area1 - aTarget)
 end
 
+function params_for_profile(tOverT, timeVals, lengths, halfThicknesses, thetas; aTarget=0.0644)
+    """
+        params_for_profile(tOverT, timeVals, lengths, halfThicknesses, thetas)
+
+    Calculate parameters for profile control points at a non-dimensional time `tOverT`
+    using smooth spline interpolation given source data at sparse time values.
+
+    # Arguments
+    - `tOverT::Float64`: Non-dimensional time value.
+    - `timeVals::Vector{Float64}`: Array of time values.
+    - `lengths::Matrix{Float64}`: Matrix of length values for each control point over time.
+    - `halfThicknesses::Matrix{Float64}`: Matrix of half thickness values for each control point over time.
+    - `thetas::Matrix{Float64}`: Matrix of angle values for each control point over time.
+    - `aTarget::Float64`: target area for the profile, default is 0.0644 (from Costello 2020).
+        Set to a negative value in order to disable optimisation. The area of the profile will then not
+        be exactly the same for all t/T parameter values.
+
+    # Returns
+    - `Vector{Float64}`: Array of fitted length values for the profile at `tOverT`.
+    - `Vector{Float64}`: Array of fitted half thickness values for the profile at `tOverT`.
+    - `Vector{Float64}`: Array of fitted angle values for the profile at `tOverT`.
+
+    """
+    Lfit, thkFit, thetaFit = zeros(size(lengths, 1)), zeros(size(lengths, 1)), zeros(size(lengths, 1))
+    for i in 1:length(Lfit)
+        itp_l = interpolate(timeVals, lengths[i, :], SteffenMonotonicInterpolation())
+        itp_t = interpolate(timeVals, halfThicknesses[i, :], SteffenMonotonicInterpolation())
+        itp_a = interpolate(timeVals, thetas[i, :], SteffenMonotonicInterpolation())
+
+        Lfit[i] = itp_l(tOverT)
+        thkFit[i] = itp_t(tOverT)
+        thetaFit[i] = itp_a(tOverT)
+    end
+    
+    if aTarget > 0.0
+        f(x) = thicknessTarget(x[1], Lfit, thkFit, thetaFit)
+        result = optimize(f, [0.0], [1.0], [0.5])
+        dThick = (result.minimizer[1] - 0.5)/0.5 * 0.01
+        thkFit .+= dThick
+    end
+
+    return Lfit, thkFit, thetaFit
+end
+
 # ===
 # Test splines
 s = 0:0.01:1
@@ -284,7 +328,7 @@ for i in 1:size(lengths, 1)
     plot!(timeVals, thetas[i, :], linestyle=:dash, marker=:circle,
         markersize=2, alpha=0.2, label="", ylabel="Angle", subplot=3, color=color_range[i])
     
-    # Smooth curves    
+    # Smooth curves
     itp_l = interpolate(timeVals, lengths[i, :], SteffenMonotonicInterpolation())
     itp_t = interpolate(timeVals, halfThicknesses[i, :], SteffenMonotonicInterpolation())
     itp_a = interpolate(timeVals, thetas[i, :], SteffenMonotonicInterpolation())
@@ -301,26 +345,21 @@ savefig("outputs/plot_01_bellShape_segmentParams.png")
 # ===
 # Bell shape.
 
-xy, cps, area = profileFromParams(lengths[:, 1], halfThicknesses[:, 1], thetas[:, 1])
+Lfit, thkFit, thetaFit = params_for_profile(0.35, timeVals, lengths, halfThicknesses, thetas, aTarget=-1.0)
+Lfit_o, thkFit_o, thetaFit_o = params_for_profile(0.35, timeVals, lengths, halfThicknesses, thetas)
 
-plot(xy[1, :], xy[2, :], dpi=200, size=(1200, 800), labels="")
+xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
+xy_o, cps_o, area_o = profileFromParams(Lfit_o, thkFit_o, thetaFit_o)
+
+plot(xy[1, :], xy[2, :], dpi=200, size=(1200, 800), label="Interpolated profile")
+plot!(xy_o[1, :], xy_o[2, :], linestyle=:dashdot, label="Interpolated profile with area conservation enforced")
 plot!(cps[1, :], cps[2, :], marker=:circle, linestyle=:dash, label="")
-annotate!(0.1, 0., "A=\$$(round(area, digits=4))\$ units\$^2\$", valign=:bottom, halign=:left)
+annotate!(0.05, -0.52, "A_target=\$$(round(0.0644, digits=4))\$ units\$^2\$", halign=:left)
+annotate!(0.05, -0.55, "A=\$$(round(area, digits=4))\$ units\$^2\$", halign=:left)
+annotate!(0.05, -0.58, "A_opt=\$$(round(area_o, digits=4))\$ units\$^2\$", halign=:left)
 savefig("outputs/plot_02_bellShape_finalShape.png")
 
-# ===
-# Thickness optimisation for volume conservation
 
-
-# TODO need to interpolate for a given t
-f(x) = thicknessTarget(x[1], lengths[:, 1], halfThicknesses[:, 1], thetas[:, 1])#Lfit, thkFit, thetaFit)
-
-result = optimize(f, [0.0], [1.0], [0.5])
-
-# Get the optimized x value
-x_optimized = result.minimizer[1]
-
-println("Optimized x value: $x_optimized")
 
 
 #=
