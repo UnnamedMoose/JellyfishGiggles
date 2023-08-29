@@ -1,6 +1,11 @@
+# Custom bell shape routines
+include("./src/JellyfishPhysics.jl")
+using .JellyfishPhysics
+
 # WaterLily and misc addons
 using WaterLily
 using ParametricBodies
+
 # Standard modules
 using StaticArrays
 using GLMakie
@@ -69,14 +74,65 @@ function make_sim(; L=32, Re=1e3, U=1, n=8, m=4, T=Float32, mem=Array)
     end
 
 
-    # Test 0 - basic ellipse defined using an analytical function
-#=
+    # Baseline - basic ellipse defined using an analytical function
     ellipse(θ, t) = 0.5f0L*SA[1+cos(θ), 0.12f0sin(θ)]
-    body = ParametricBody(ellipse, (0, π); map, T, mem) 
-=#
+    body = ParametricBody(ellipse, (0, π); map, T, mem)
+    
+    # Test 0.0 - new splines
+    s = 0:0.01:1
+    cps = hcat(
+        rotatePoint([0, -0.2], [0., -0.2], 15.0/180.0*pi),
+        rotatePoint([0.15, -0.2], [0., -0.2], 15.0/180.0*pi),
+        rotatePoint([0.4, -0.35], [0., -0.2], 15.0/180.0*pi),
+        rotatePoint([0.389, -0.52], [0., -0.2], 15.0/180.0*pi),
+    )
+    pu = evaluate_spline(cps, s)
+    xy = hcat(pu, reverse(pu[:, 1:end-1], dims=2))
+    a = polyArea(xy)
+    
+    # Test 0.1 - bell shape params
+    halfThicknesses = hcat(
+        [0.101, 0.099, 0.090],
+        [0.081, 0.102, 0.077],
+        [0.063, 0.069, 0.048],
+        [0.033, 0.041, 0.0338],
+        [0.011, 0.011, 0.011],
+    )'
 
+    lengths = hcat(
+        [0.080, 0.052, 0.103],
+        [0.118, 0.105, 0.163],
+        [0.194, 0.250, 0.194],
+        [0.228, 0.179, 0.228],
+        [0.250, 0.165, 0.250],
+    )'
+
+    thetas = hcat(
+        [0., 0., 0.],
+        [0.380, 0.080, 0.250],
+        [0.400, 0.731, 1.100],
+        [0.900, 1.670, 1.370],
+        [2.200, 0.125, 2.100],
+    )'
+
+    timeVals = [0, 0.01, 0.2, 0.4, 0.95, 1.0]
+    smooth_time = 0:0.01:1
+    halfThicknesses = hcat(halfThicknesses[:, 1:1], halfThicknesses, halfThicknesses[:, 1:1], halfThicknesses[:, 1:1])
+    lengths = hcat(lengths[:, 1:1], lengths, lengths[:, 1:1], lengths[:, 1:1])
+    thetas  = hcat(thetas[:, 1:1], thetas, thetas[:, 1:1], thetas[:, 1:1])
+    itp_l = interpolate(timeVals, lengths[1, :], SteffenMonotonicInterpolation())
+    smooth_time = 0:0.01:1
+    y_l = itp_l.(smooth_time)
+    
+    # Test 0.2 - bell shape
+    Lfit, thkFit, thetaFit = params_for_profile(0.35, timeVals, lengths, halfThicknesses, thetas, aTarget=-1.0)
+    Lfit_o, thkFit_o, thetaFit_o = params_for_profile(0.35, timeVals, lengths, halfThicknesses, thetas)
+    xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
+    xy_o, cps_o, area_o = profileFromParams(Lfit_o, thkFit_o, thetaFit_o)
+    
     # Test 1 - ellipse-like shape defined using a B-spline
     # NOTE this fails.
+#=
     p = 3
     kVec = T[0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 4.0, 4.0, 4.0] ./ 4.0f0
     controlPoints = Vector{T}[[0.0, 0.0], [0.0, 0.12], [0.2, 0.12], [0.5, 0.13], [0.8, 0.12], [1.0, 0.11], [1.0, 0.0]]
@@ -94,6 +150,7 @@ function make_sim(; L=32, Re=1e3, U=1, n=8, m=4, T=Float32, mem=Array)
         return 0.5f0*L*SA[1+cos(s*pi), 0.12f0*sin(s*pi)]
     end
     body = ParametricBody(body_shape, (0, 1); map, T, mem) 
+=#
 
     # Test 2 - see if can use Interpolations on the GPU
     # NOTE this fails
