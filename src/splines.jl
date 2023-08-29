@@ -124,9 +124,9 @@ function rotatePoint(pt, x0, theta)
     return [xr, yr] + x0
 end
 
-function profileFromParams(lengths, halfThickness, theta, s=0:0.01:1)
+function profileFromParams(lengths, halfThickness, theta; s=0:0.01:1, mirror=false)
     """
-        profileFromParams(lengths, halfThickness, theta, s=0:0.01:1)
+        profileFromParams(lengths, halfThickness, theta; s=0:0.01:1)
 
     Calculate profile coordinates, control points, and area based on input parameters.
 
@@ -135,6 +135,7 @@ function profileFromParams(lengths, halfThickness, theta, s=0:0.01:1)
     - `halfThickness::Vector{Float64}`: Array of half thicknesses.
     - `theta::Vector{Float64}`: Array of angles in radians.
     - `s::StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}}`: Parameter range for evaluation. Default is `0:0.01:1`.
+    - `mirror::{Bool}`: whether or not to make a full profile, default is false.
 
     Returns
     - `Array{Float64, 2}`: Array of profile coordinates.
@@ -160,6 +161,9 @@ function profileFromParams(lengths, halfThickness, theta, s=0:0.01:1)
     end
 
     cps = hcat(cps_u, reverse(cps_l, dims=2))
+    if mirror
+        cps = hcat(cps, reverse(cps[:, 1:end-1].*[-1.0, 1.0], dims=2))
+    end
     xy = evaluate_spline(cps, s)
     area = polyArea(xy)
     

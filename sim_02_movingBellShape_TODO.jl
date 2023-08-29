@@ -74,11 +74,69 @@ function make_sim(; L=32, Re=1e3, U=1, n=8, m=4, T=Float32, mem=Array)
     end
 
 
+    halfThicknesses = hcat(
+        [0.101, 0.099, 0.090],
+        [0.081, 0.102, 0.077],
+        [0.063, 0.069, 0.048],
+        [0.033, 0.041, 0.0338],
+        [0.011, 0.011, 0.011],
+    )'
+    lengths = hcat(
+        [0.080, 0.052, 0.103],
+        [0.118, 0.105, 0.163],
+        [0.194, 0.250, 0.194],
+        [0.228, 0.179, 0.228],
+        [0.250, 0.165, 0.250],
+    )'
+    thetas = hcat(
+        [0., 0., 0.],
+        [0.380, 0.080, 0.250],
+        [0.400, 0.731, 1.100],
+        [0.900, 1.670, 1.370],
+        [2.200, 0.125, 2.100],
+    )'
+    # TODO values need to be confirmed against the plot from Costello.
+    timeVals = [0, 0.01, 0.2, 0.4, 0.95, 1.0]
+    
+    halfThicknesses = hcat(halfThicknesses[:, 1:1], halfThicknesses, halfThicknesses[:, 1:1], halfThicknesses[:, 1:1])
+    lengths = hcat(lengths[:, 1:1], lengths, lengths[:, 1:1], lengths[:, 1:1])
+    thetas  = hcat(thetas[:, 1:1], thetas, thetas[:, 1:1], thetas[:, 1:1])
+    
+    period = 2.0*L
+    
+    # Moved outside of params_for_profile
+    Lfit, thkFit, thetaFit = zeros(size(lengths, 1)), zeros(size(lengths, 1)), zeros(size(lengths, 1))
+    
+    function jelly(s, t)
+        tOverT = (t/period) % period
+        
+#        Lfit, thkFit, thetaFit = params_for_profile(tOverT, timeVals, lengths, halfThicknesses, thetas)  # TODO this fails
+        for i in 1:length(Lfit)
+#            itp_l = interpolate(timeVals, lengths[1, :], SteffenMonotonicInterpolation())
+#            itp_t = interpolate(timeVals, halfThicknesses[i, :], SteffenMonotonicInterpolation())
+#            itp_a = interpolate(timeVals, thetas[i, :], SteffenMonotonicInterpolation())
+
+#            Lfit[i] = itp_l(tOverT)
+#            thkFit[i] = itp_t(tOverT)
+#            thetaFit[i] = itp_a(tOverT)
+        end
+        
+
+
+#        xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit; mirror=true)
+#        return evaluate_spline(cps, s)
+
+        return 0.5f0L*SA[1+cos(s*pi), 0.12f0sin(s*pi)]
+    end
+
+    body = ParametricBody(jelly, (0, 1); map, T, mem)
+
     # Baseline - basic ellipse defined using an analytical function
-    ellipse(θ, t) = 0.5f0L*SA[1+cos(θ), 0.12f0sin(θ)]
-    body = ParametricBody(ellipse, (0, π); map, T, mem)
+#    ellipse(θ, t) = 0.5f0L*SA[1+cos(θ), 0.12f0sin(θ)]
+#    body = ParametricBody(ellipse, (0, π); map, T, mem)
     
     # Test 0.0 - new splines
+#=
     s = 0:0.01:1
     cps = hcat(
         rotatePoint([0, -0.2], [0., -0.2], 15.0/180.0*pi),
@@ -91,31 +149,6 @@ function make_sim(; L=32, Re=1e3, U=1, n=8, m=4, T=Float32, mem=Array)
     a = polyArea(xy)
     
     # Test 0.1 - bell shape params
-    halfThicknesses = hcat(
-        [0.101, 0.099, 0.090],
-        [0.081, 0.102, 0.077],
-        [0.063, 0.069, 0.048],
-        [0.033, 0.041, 0.0338],
-        [0.011, 0.011, 0.011],
-    )'
-
-    lengths = hcat(
-        [0.080, 0.052, 0.103],
-        [0.118, 0.105, 0.163],
-        [0.194, 0.250, 0.194],
-        [0.228, 0.179, 0.228],
-        [0.250, 0.165, 0.250],
-    )'
-
-    thetas = hcat(
-        [0., 0., 0.],
-        [0.380, 0.080, 0.250],
-        [0.400, 0.731, 1.100],
-        [0.900, 1.670, 1.370],
-        [2.200, 0.125, 2.100],
-    )'
-
-    timeVals = [0, 0.01, 0.2, 0.4, 0.95, 1.0]
     smooth_time = 0:0.01:1
     halfThicknesses = hcat(halfThicknesses[:, 1:1], halfThicknesses, halfThicknesses[:, 1:1], halfThicknesses[:, 1:1])
     lengths = hcat(lengths[:, 1:1], lengths, lengths[:, 1:1], lengths[:, 1:1])
@@ -129,7 +162,8 @@ function make_sim(; L=32, Re=1e3, U=1, n=8, m=4, T=Float32, mem=Array)
     Lfit_o, thkFit_o, thetaFit_o = params_for_profile(0.35, timeVals, lengths, halfThicknesses, thetas)
     xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
     xy_o, cps_o, area_o = profileFromParams(Lfit_o, thkFit_o, thetaFit_o)
-    
+=#
+
     # Test 1 - ellipse-like shape defined using a B-spline
     # NOTE this fails.
 #=
@@ -194,7 +228,7 @@ Makie.inline!(false)
 L = 32
 name = "outputs/out_02_motion.mp4"
 
-cycle = range(0, L*0.1, 2)
+cycle = range(0, L*4.0, 51)
 sim = make_sim(; L, mem=CuArray)
 
 fig,viz = body_omega_fig(sim)

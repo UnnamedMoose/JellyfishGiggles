@@ -144,9 +144,9 @@ savefig("outputs/plot_02_bellShape_finalShape.png")
 anim = @animate for i ∈ 1:101
     t = (i/101) % 1.0
     Lfit, thkFit, thetaFit = params_for_profile(t, timeVals, lengths, halfThicknesses, thetas)
-    xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
-    plot(xy[1, :], xy[2, :], label="", color=:red, xlimits=(0-0.01, 0.75), lw=2, ylimits=(-0.75, 0.01),
-        aspect_ratio=:equal, xlabel="Bell width", ylabel="Bell height", dpi=200, size=(1200, 800))
+    xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit; mirror=true)
+    plot(xy[1, :], xy[2, :], label="", color=:red, xlimits=(-0.75, 0.75), lw=2, ylimits=(-0.75, 0.01),
+        aspect_ratio=:equal, xlabel="Bell width", ylabel="Bell height", dpi=200, size=(1200, 600))
     plot!(cps[1, :], cps[2, :], marker=:circle, linestyle=:dash, label="", color=:black, alpha=0.5, lw=2)
 end
 gif(anim, "outputs/plot_03_animatedBellShape.gif", fps=15)
