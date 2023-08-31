@@ -369,6 +369,24 @@ for j in range(3):
 
 plt.savefig("./outputs/bellShapeEvolution_Costello2020_kinematicsModel.png", dpi=200, bbox_inches="tight")
 
+# %% Read time series data of Costello
+
+ref_Uswim = np.loadtxt("./dataset_01_medusae/data_Costello2020_Uswim.txt")
+ref_Uedge = np.loadtxt("./dataset_01_medusae/data_Costello2020_Uedge.txt")
+ref_dist = np.loadtxt("./dataset_01_medusae/data_Costello2020_totalDistance.txt")
+ref_fin = np.loadtxt("./dataset_01_medusae/data_Costello2020_fineness.txt")
+
+fig, ax = niceFig("Time [s]", "Total distance [mm]")
+ax.plot(ref_dist[:, 0], ref_dist[:, 1], "r-", lw=2)
+
+fig, ax = niceFig("Time [s]", "Fineness")
+ax.plot(ref_fin[:, 0], ref_fin[:, 1], "r-", lw=2)
+
+fig, ax = niceFig("Time [s]", "Swimming speed, bell edge speed [mm/s]")
+ax.plot(ref_Uswim[:, 0], ref_Uswim[:, 1], "r-", lw=2, label="U$_{swim}$")
+ax.plot(ref_Uedge[:, 0], ref_Uedge[:, 1], "b-", lw=2, label="U$_{edge}$")
+ax.legend(ncol=2, bbox_to_anchor=(0.5, 1.01), loc="lower center")
+
 # %% Create time series of the bell shape parameters for continuous motion.
 
 # Function for smoothing the sparse kinematics data. A lot of fidgeting involved
