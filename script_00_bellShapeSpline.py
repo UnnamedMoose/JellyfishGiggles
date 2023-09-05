@@ -313,17 +313,24 @@ def profileFromParams(length, halfThickness, theta, s=np.linspace(0, 1, 101),
 
 
 halfThicknesses = np.array([
-    [0.101, 0.099, 0.090],
-    [0.081, 0.102, 0.077],
-    [0.063, 0.069, 0.048],
+# [0.101, 0.099, 0.090],
+# [0.101, 0.099, 0.090],
+# [0.081, 0.102, 0.080],
+    [0.097, 0.099, 0.090],
+    [0.097, 0.099, 0.090],
+    [0.083, 0.102, 0.080],
+    [0.063, 0.071, 0.049],
 # [0.033, 0.031, 0.024],
-    [0.033, 0.041, 0.0338],
+    [0.0335, 0.042, 0.0345],
     [0.011, 0.011, 0.011],
 ])
 
 lengths = np.array([
-    [0.080, 0.052, 0.103],
-    [0.118, 0.105, 0.163],
+# [0.080, 0.052, 0.103],
+    [0.020, 0.013, 0.025],
+    [0.040, 0.026, 0.0515],
+# [0.118, 0.105, 0.163],
+    [0.12, 0.11, 0.14],
     [0.194, 0.250, 0.194],
     [0.228, 0.179, 0.228],
     [0.250, 0.165, 0.250],
@@ -331,13 +338,15 @@ lengths = np.array([
 
 thetas = np.array([
     [0., 0., 0.],
+    [0., 0., 0.],
 # [0.440, 0.147, 0.427],
 # [0.462, 0.831, 1.279],
 # [1.102, 1.570, 1.437],
 # [2.200, 0.125, 2.200],
-    [0.380, 0.080, 0.250],
-    [0.400, 0.731, 1.100],
-    [0.900, 1.670, 1.370],
+# [0.380, 0.080, 0.250],
+    [0.390, 0.11, 0.37],
+    [0.400, 0.731, 0.920],
+    [0.950, 1.75, 1.44],
     [2.200, 0.125, 2.100],
 ])
 
@@ -376,16 +385,36 @@ ref_Uedge = np.loadtxt("./dataset_01_medusae/data_Costello2020_Uedge.txt")
 ref_dist = np.loadtxt("./dataset_01_medusae/data_Costello2020_totalDistance.txt")
 ref_fin = np.loadtxt("./dataset_01_medusae/data_Costello2020_fineness.txt")
 
+# From the plot by Costello.
+tVals = np.array([0.04836558, 0.22848566, 0.41027352, 1.39926618, 1.57771848, 1.76617745])
+
 fig, ax = niceFig("Time [s]", "Total distance [mm]")
 ax.plot(ref_dist[:, 0], ref_dist[:, 1], "r-", lw=2)
+ylim = ax.get_ylim()
+ax.set_ylim(0, ylim[1])
+ax.set_xlim(0, ax.get_xlim()[1])
+ax.vlines(tVals, ylim[0], ylim[1], linestyle="dashed", color="k", alpha=0.5)
 
 fig, ax = niceFig("Time [s]", "Fineness")
 ax.plot(ref_fin[:, 0], ref_fin[:, 1], "r-", lw=2)
+ylim = ax.get_ylim()
+ax.set_ylim(0, ylim[1])
+ax.set_xlim(0, ax.get_xlim()[1])
+ax.vlines(tVals, 0, ylim[1], linestyle="dashed", color="k", alpha=0.5)
 
 fig, ax = niceFig("Time [s]", "Swimming speed, bell edge speed [mm/s]")
 ax.plot(ref_Uswim[:, 0], ref_Uswim[:, 1], "r-", lw=2, label="U$_{swim}$")
 ax.plot(ref_Uedge[:, 0], ref_Uedge[:, 1], "b-", lw=2, label="U$_{edge}$")
 ax.legend(ncol=2, bbox_to_anchor=(0.5, 1.01), loc="lower center")
+ylim = ax.get_ylim()
+ax.set_ylim(0, ylim[1])
+ax.set_xlim(0, ax.get_xlim()[1])
+ax.vlines(tVals, ylim[0], ylim[1], linestyle="dashed", color="k", alpha=0.5)
+
+# Compute the period in second, non-dimensionalise snapshot times to range (0, 1).
+period = tVals[3] - tVals[0]
+tVals /= period
+tVals -= tVals[0]
 
 # %% Create time series of the bell shape parameters for continuous motion.
 
@@ -393,13 +422,12 @@ ax.legend(ncol=2, bbox_to_anchor=(0.5, 1.01), loc="lower center")
 # to make sure the curves are continuous when going from t=1 to t=0 and to avoid
 # substantial overshooting.
 def smoothWithSpline(tf, yf, t):
-    tf = [tf[0], tf[0]+0.01, tf[1], tf[2], tf[-1]-0.5, tf[-1]-0.4, tf[-1]-0.15, tf[-1]]
+    tf = [tf[0], tf[0]+0.01, tf[1], tf[2], tf[-1]-0.67, tf[-1]-0.6, tf[-1]-0.25, tf[-1]]
     yf = [yf[0], yf[0], yf[1], yf[2], yf[-1], yf[-1], yf[-1], yf[-1]]
     spl = scipy.interpolate.splrep(tf, yf, s=0., k=2)
     return scipy.interpolate.splev(t, spl)
 
-# TODO digitise from Costello plot.
-timeVals = [0, 0.2, 0.4, 1.0]
+timeVals = [0, 0.13, 0.27, 1.0]
 
 fig, axes = plt.subplots(nrows=3, sharex=True, figsize=(8, 12))
 axes[-1].set_xlabel("t/T")
@@ -435,7 +463,7 @@ plt.savefig("./outputs/bellShapeEvolution_Costello2020_kinematicsParams.png", dp
 def thicknessTarget(x, Lfit, thkFit, thetaFit):
     dt = (x-0.5)/0.5*0.01
     xy1, cps1, area1 = profileFromParams(Lfit, thkFit+dt, thetaFit)
-    return abs(area1 - 0.0644)
+    return abs(area1 - 0.0671)
 
 
 def NewtRaph(func, x0, funcKwargs={}, Nmax=100, tol=5e-18):
@@ -513,7 +541,7 @@ class JellyfishPlot(object):
         return self.plotObjects
 
 
-animate = False
+animate = True
 
 # Set up the plot
 fig, ax = niceFig(figsize=(8, 10))
