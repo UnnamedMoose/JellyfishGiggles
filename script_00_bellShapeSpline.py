@@ -23,6 +23,9 @@ font = {"family": "serif",
 matplotlib.rc("font", **font)
 matplotlib.rcParams["figure.figsize"] = (9, 6)
 
+# https://github.com/orbingol/NURBS-Python/blob/5.x/geomdl/BSpline.py
+from geomdl import NURBS, BSpline
+
 # %% Helper function.
 
 
@@ -70,6 +73,44 @@ def bspline(cv, s, d=3):
         pt += CoxDeBoor(knots, s, k, d, count) * cv[k]
     return pt
 
+
+
+# %% Small tests against an external NURBS package.
+
+# Try to represent a circle using a b-spline (not quite possible) and a NURBS (easy).
+
+s = np.linspace(0, 1, 101)
+
+cps = np.array([
+    [0, 0.5],
+    [0.5, 0.5],
+    [0.5, 0.],
+])
+pu = np.array([bspline(cps, u, d=2) for u in s])
+
+curve_s = BSpline.Curve()
+curve_s.degree = 2
+curve_s.ctrlpts = [list(p) for p in list(cps)]
+curve_s.knotvector = [0, 0, 0, 1, 1, 1]
+
+curve = NURBS.Curve()
+curve.degree = 2
+curve.ctrlpts = list(cps)
+curve.knotvector = [0, 0, 0, 1, 1, 1]
+curve.weights = [1., 2.**0.5/2., 1.0]
+
+curve_points = np.array(curve.evalpts)
+curve_points_s = np.array(curve_s.evalpts)
+
+fig, ax = plt.subplots()
+ax.set_aspect("equal")
+t = np.linspace(0, np.pi/2, 101)
+ax.plot(0.5*np.cos(t), 0.5*np.sin(t), "k--", lw=2, label="Circle")
+ax.plot(cps[:, 0], cps[:, 1], "ro--", label="Control points")
+ax.plot(pu[:, 0], pu[:, 1], "b-", label="Spline (own)")
+ax.plot(curve_points_s[:, 0], curve_points_s[:, 1], "--", c="orange", label="Spline (lib)")
+ax.plot(curve_points[:, 0], curve_points[:, 1], "m--", label="NURBS (lib)")
+ax.legend()
 
 # %% Misc
 
