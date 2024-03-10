@@ -151,3 +151,22 @@ anim = @animate for i ∈ 1:101
 end
 gif(anim, "outputs/plot_03_animatedBellShape.gif", fps=15)
 
+# TODO compare with parametric bodies
+#=
+
+    # define a flat plat at and angle of attack
+    cps = SA[-1   0   1
+            0.5 0.25 0]*L .+ [2L,3L]
+
+    # needed if control points are moved
+    cps_m = MMatrix(cps)
+    # weights = SA[1.,1.,1.]
+    # knots =   SA[0,0,0,1,1,1.]
+
+    # make a nurbs curve
+    # circle = NurbsCurve(cps_m,knots,weights)
+    circle = BSplineCurve(cps_m;degree=2)
+=#
+
+
+
