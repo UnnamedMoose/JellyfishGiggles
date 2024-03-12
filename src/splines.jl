@@ -9,7 +9,8 @@ using Optim
 using StaticArrays
 using CUDA
 
-function coxDeBoor(knots, u, k, d, count)
+# TODO obsolete - now using ParametricBodies.jl
+function old_coxDeBoor(knots, u, k, d, count)
     """
         coxDeBoor(knots, u, k, d, count)
 
@@ -31,11 +32,12 @@ function coxDeBoor(knots, u, k, d, count)
     if (d == 0)
         return Int(((knots[k+1] <= u) && (u < knots[k+2])) || ((u >= (1.0-1e-12)) && (k == (count-1))))
     end
-    return (((u-knots[k+1])/max(1e-12, knots[k+d+1]-knots[k+1]))*coxDeBoor(knots, u, k, (d-1), count)
-        + ((knots[k+d+2]-u)/max(1e-12, knots[k+d+2]-knots[k+2]))*coxDeBoor(knots, u, (k+1), (d-1), count))
+    return (((u-knots[k+1])/max(1e-12, knots[k+d+1]-knots[k+1]))*old_coxDeBoor(knots, u, k, (d-1), count)
+        + ((knots[k+d+2]-u)/max(1e-12, knots[k+d+2]-knots[k+2]))*old_coxDeBoor(knots, u, (k+1), (d-1), count))
 end
 
-function bspline(cv, s; d=3)
+# TODO obsolete - now using ParametricBodies.jl
+function old_bspline(cv, s; d=3)
     """
         bspline(cv, s; d=3)
 
@@ -58,12 +60,12 @@ function bspline(cv, s; d=3)
     knots = vcat(zeros(d), range(0, count-d) / (count-d), ones(d))
     pt = zeros(size(cv, 1))
     for k in range(0, count-1)
-        pt += coxDeBoor(knots, s, k, d, count) * cv[:, k+1]
+        pt += old_coxDeBoor(knots, s, k, d, count) * cv[:, k+1]
     end
     return pt
 end
 
-function evaluate_spline(cps, s)
+function old_evaluate_spline(cps, s)
     """
         evaluate_spline(cps, s)
 
@@ -81,7 +83,14 @@ function evaluate_spline(cps, s)
     Note:
     - This function assumes a column-major orientation of points as Julia gods intended.
     """
-    return hcat([bspline(cps, u, d=2) for u in s]...)
+    return hcat([old_bspline(cps, u, d=2) for u in s]...)
+end
+
+function pbSpline(cps, s; deg=2)
+    """ Handy wrapper around ParametricBodies.jl spline class. """
+    cps_m = MMatrix(SArray{Tuple{2, size(cps[1,:])[1]}}(cps))
+    curve = BSplineCurve(cps_m; degree=deg)
+    return hcat([curve(u, 0) for u in s]...)
 end
 
 function polyArea(xy)

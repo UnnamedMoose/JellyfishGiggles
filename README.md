@@ -13,13 +13,24 @@ Dependencies:
     import Pkg; Pkg.add("Images"); Pkg.add("Interpolations"); Pkg.add("ColorSchemes"); Pkg.add("Optim")
 
 TODO
-- get the ParametricBodies.jl spline running and compare to my old implementation
+x get the ParametricBodies.jl spline running and compare to my old implementation
     to make sure that for the same order and CPs we get the same spline
-- update CPs and kinematics to match Python, they have been improved
-- rewrite the src/JellyfishPhysics.jl to use PB.jl splines. No need to duplicate code.
-- run a simple simulation with no flow to check the kinematics and SDF
+
+| update CPs and kinematics to match Python, they have been improved
+    - try using NURBS with repeated knots to directly interpolate the kinematics instead of
+        using the interpolation package
+    - compare directly to Costello data for the three available cycles to make sure
+        everything's fine
+    - save an animation out of julia to make sure we can generate unsteady profiles;
+        check how that's done in parametric bodies to use the same code structure
+        
+| rewrite the src/JellyfishPhysics.jl to use PB.jl splines. No need to duplicate code.
+
+- run a simple simulation with no flow to check the kinematics and SDF; start with using
+    just the centreline and fixed thickness
 - add the flow and run that
 - make sure the code can run on the GPU node
+- add proper filled 2D profile
 - add B-S BC (ask Marin for help)
 - add 1D motion with MRF (ask Marin for help)
 - make the SDF axisymmetric in 3D for validation

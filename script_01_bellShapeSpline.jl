@@ -6,73 +6,33 @@ using Interpolations
 using ColorSchemes
 using Optim
 
-include("./src/JellyfishPhysics.jl")
-using .JellyfishPhysics
+using ParametricBodies
+
+#include("./src/JellyfishPhysics.jl")
+#using .JellyfishPhysics
+
+include("./src/splines.jl")
+# xy = pbSpline(cps, s)
 
 # ===
 # Test splines
 s = 0:0.01:1
 
-# 1st cycle, upper
-cps_u = hcat(
-    [0, 0.],
-    [0.05, 0],
-    [0.472, -0.25],
-    [0.389, -0.52]
-)
-
-pu = evaluate_spline(cps_u, s)
-
-# 1st cycle lower
-cps_l = hcat(
-    [0, -0.2],
-    [0.15, -0.2],
-    [0.4, -0.35],
-    [0.389, -0.52]
-)
-
-pl = evaluate_spline(cps_l, s)
-xy = hcat(pu, reverse(pl[:, 1:end-1], dims=2))
-
-plot(pu[1, :], pu[2, :], label="", color=:blue)
-plot!(cps_u[1, :], cps_u[2, :], linestyle=:dash, marker=:circle, label="", color=:blue)
-plot!(pl[1, :], pl[2, :], label="", color=:red)
-plot!(cps_l[1, :], cps_l[2, :], linestyle=:dash, marker=:circle, label="", color=:red)
-plot!(xy[1, :], xy[2, :], color=:black, lw=2, linestyle=:dash)
-
-
-# ===
-# Test area computation.
-println(polyArea(xy))
-println(0.06645296399999623)
-
-# ===
-# Test rotation
-cps = hcat(
-    rotatePoint([0, -0.2], [0., -0.2], 15.0/180.0*pi),
-    rotatePoint([0.15, -0.2], [0., -0.2], 15.0/180.0*pi),
-    rotatePoint([0.4, -0.35], [0., -0.2], 15.0/180.0*pi),
-    rotatePoint([0.389, -0.52], [0., -0.2], 15.0/180.0*pi),
-)
-pl = evaluate_spline(cps, s)
-plot!(pl[1, :], pl[2, :], label="", color=:orange)
-plot!(cps[1, :], cps[2, :], linestyle=:dash, marker=:circle, label="", color=:orange)
-
-savefig("outputs/plot_00_bellShape_testSplinesAndRotation.png")
-
 # ===
 # Bell shape parameters.
 halfThicknesses = hcat(
-    [0.101, 0.099, 0.090],
-    [0.081, 0.102, 0.077],
-    [0.063, 0.069, 0.048],
-    [0.033, 0.041, 0.0338],
+    [0.097, 0.099, 0.090],
+    [0.097, 0.099, 0.090],
+    [0.083, 0.102, 0.080],
+    [0.063, 0.071, 0.049],
+    [0.0335, 0.042, 0.0345],
     [0.011, 0.011, 0.011],
 )'
 
 lengths = hcat(
-    [0.080, 0.052, 0.103],
-    [0.118, 0.105, 0.163],
+    [0.020, 0.013, 0.025],
+    [0.040, 0.026, 0.0515],
+    [0.12, 0.11, 0.14],
     [0.194, 0.250, 0.194],
     [0.228, 0.179, 0.228],
     [0.250, 0.165, 0.250],
@@ -80,15 +40,36 @@ lengths = hcat(
 
 thetas = hcat(
     [0., 0., 0.],
-    [0.380, 0.080, 0.250],
-    [0.400, 0.731, 1.100],
-    [0.900, 1.670, 1.370],
+    [0., 0., 0.],
+    [0.390, 0.11, 0.37],
+    [0.400, 0.731, 0.920],
+    [0.950, 1.75, 1.44],
     [2.200, 0.125, 2.100],
 )'
 
-# TODO digitise from Costello plot.
-timeVals = [0, 0.01, 0.2, 0.4, 0.95, 1.0]
+# Digitised from Costello plot.
+#timeVals = [0, 0.01, 0.2, 0.4, 0.95, 1.0]
+timeVals = [0.04836558, 0.22848566, 0.41027352, 1.39926618, 1.57771848, 1.76617745]
 
+# ===
+# Test smooth interpolation using NURBS
+t = (timeVals.-timeVals[1])
+t = t ./ t[end]
+cps = hcat([t, thetas[6, :]]...)
+cps = SArray{Tuple{2, length(timeVals)}}(cps)
+cps_m = MMatrix(cps)
+weights = SA[1., 1., 1., 1., 1., 1.,]
+knots =   SA[0, 0, 0, 1, 1, 1., 2., 2., 2., 3., 3., 3., 4., 4., 4., 5., 5., 5.] / 5.
+# make a nurbs curve
+curve = NurbsCurve(cps_m, knots, weights)
+#curve = BSplineCurve(cps_m; degree=2)
+xy = hcat([curve(u, 0) for u in s]...)
+
+
+plot(t, thetas[6, :], show=true, linestyle=:dash, marker=:circle, label="", color=:orange)
+plot!(xy[1, :], xy[2, :])
+
+#=
 # Add the first element as last to complete the cycle. Repeat at small offsets
 # to force zero gradient to the curves and make for a smooth transition.
 halfThicknesses = hcat(halfThicknesses[:, 1:1], halfThicknesses, halfThicknesses[:, 1:1], halfThicknesses[:, 1:1])
@@ -97,7 +78,7 @@ thetas  = hcat(thetas[:, 1:1], thetas, thetas[:, 1:1], thetas[:, 1:1])
 
 # Create a layout with 3 rows and 1 column
 layout = @layout([a; b; c])
-p = plot(layout=(3, 1), dpi=200, size=(1200, 800))
+p = plot(layout=(3, 1), dpi=200, size=(1200, 800), show=true)
 color_range = [RGB(get(ColorSchemes.algae, k)) for k in range(0, 1, length=size(lengths, 2))]
 for i in 1:size(lengths, 1)
     plot!(timeVals, lengths[i, :], linestyle=:dash, marker=:circle,
@@ -120,7 +101,9 @@ for i in 1:size(lengths, 1)
 end
 
 savefig("outputs/plot_01_bellShape_segmentParams.png")
+=#
 
+#=
 # ===
 # Bell shape.
 
@@ -150,6 +133,7 @@ anim = @animate for i ∈ 1:101
     plot!(cps[1, :], cps[2, :], marker=:circle, linestyle=:dash, label="", color=:black, alpha=0.5, lw=2)
 end
 gif(anim, "outputs/plot_03_animatedBellShape.gif", fps=15)
+=#
 
 # TODO compare with parametric bodies
 #=
