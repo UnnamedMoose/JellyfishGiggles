@@ -103,7 +103,7 @@ for i in 1:size(cps_arr, 1)
     # Pick control points from the array and make a spline
     cps_y = cps_arr[i, :]
     cps = hcat([tSplineCps, cps_y]...)'
-    pu = old_evaluate_spline(cps, s)
+    pu = pbSpline(cps, s)
 
     # Plot
     plot!(pu[1, :], pu[2, :], label="", linewidth=3, color=color_range[i])

@@ -17,12 +17,13 @@ x get the ParametricBodies.jl spline running and compare to my old implementatio
     to make sure that for the same order and CPs we get the same spline
 
 | update CPs and kinematics to match Python, they have been improved
-    - try using NURBS with repeated knots to directly interpolate the kinematics instead of
+    x try using NURBS with repeated knots to directly interpolate the kinematics instead of
         using the interpolation package
+    - rewrite the old profileFromParams routine to match what PB uses to generate
+        moving body shapes
     - compare directly to Costello data for the three available cycles to make sure
         everything's fine
-    - save an animation out of julia to make sure we can generate unsteady profiles;
-        check how that's done in parametric bodies to use the same code structure
+    - save an animation out of julia to make sure we can generate unsteady profiles
         
 | rewrite the src/JellyfishPhysics.jl to use PB.jl splines. No need to duplicate code.
 

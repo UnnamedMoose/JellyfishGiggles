@@ -9,6 +9,55 @@ using Optim
 using StaticArrays
 using CUDA
 
+function pbSpline(cps, s; deg=2)
+    """ Handy wrapper around ParametricBodies.jl spline class. """
+    cps_m = MMatrix(SArray{Tuple{2, size(cps[1,:])[1]}}(cps))
+    curve = BSplineCurve(cps_m; degree=deg)
+    return hcat([curve(u, 0) for u in s]...)
+end
+
+function polyArea(xy)
+    """
+        polyArea(xy)
+
+    Calculate the area of a polygon using the Shoelace formula.
+
+    The `polyArea` function calculates the area of a polygon defined by its vertices using the Shoelace formula.
+
+    Arguments:
+    - `xy`: A 2xN matrix containing the (x, y) coordinates of the polygon's vertices. They do not need to
+        form a closed shape, but it is assumed that the first and last points are connected by a straight line.
+
+    Returns:
+    The area of the polygon.
+    """
+    return 0.5*abs(dot(xy[1, :], [xy[2, 2:end]..., xy[2, 1]]) - dot(xy[2, :], [xy[1, 2:end]..., xy[1, 1]]))
+end
+
+function rotatePoint(pt, x0, theta)
+    """
+        rotatePoint(pt, x0, theta)
+
+    Rotate a point around a specified point by a given angle.
+
+    The `rotatePoint` function rotates a point `pt` around the point `x0` by the specified angle `theta`.
+
+    Arguments:
+    - `pt`: A 2-element vector representing the point to be rotated.
+    - `x0`: A 2-element vector representing the center of rotation.
+    - `theta`: The angle of rotation in radians.
+
+    Returns:
+    A 2-element vector representing the rotated point.
+    """
+    x = pt - x0
+    xr = x[1]*cos(theta) - x[2]*sin(theta)
+    yr = x[2]*cos(theta) + x[1]*sin(theta)
+    return [xr, yr] + x0
+end
+
+
+
 # TODO obsolete - now using ParametricBodies.jl
 function old_coxDeBoor(knots, u, k, d, count)
     """
@@ -65,6 +114,7 @@ function old_bspline(cv, s; d=3)
     return pt
 end
 
+# TODO obsolete
 function old_evaluate_spline(cps, s)
     """
         evaluate_spline(cps, s)
@@ -84,53 +134,6 @@ function old_evaluate_spline(cps, s)
     - This function assumes a column-major orientation of points as Julia gods intended.
     """
     return hcat([old_bspline(cps, u, d=2) for u in s]...)
-end
-
-function pbSpline(cps, s; deg=2)
-    """ Handy wrapper around ParametricBodies.jl spline class. """
-    cps_m = MMatrix(SArray{Tuple{2, size(cps[1,:])[1]}}(cps))
-    curve = BSplineCurve(cps_m; degree=deg)
-    return hcat([curve(u, 0) for u in s]...)
-end
-
-function polyArea(xy)
-    """
-        polyArea(xy)
-
-    Calculate the area of a polygon using the Shoelace formula.
-
-    The `polyArea` function calculates the area of a polygon defined by its vertices using the Shoelace formula.
-
-    Arguments:
-    - `xy`: A 2xN matrix containing the (x, y) coordinates of the polygon's vertices. They do not need to
-        form a closed shape, but it is assumed that the first and last points are connected by a straight line.
-
-    Returns:
-    The area of the polygon.
-    """
-    return 0.5*abs(dot(xy[1, :], [xy[2, 2:end]..., xy[2, 1]]) - dot(xy[2, :], [xy[1, 2:end]..., xy[1, 1]]))
-end
-
-function rotatePoint(pt, x0, theta)
-    """
-        rotatePoint(pt, x0, theta)
-
-    Rotate a point around a specified point by a given angle.
-
-    The `rotatePoint` function rotates a point `pt` around the point `x0` by the specified angle `theta`.
-
-    Arguments:
-    - `pt`: A 2-element vector representing the point to be rotated.
-    - `x0`: A 2-element vector representing the center of rotation.
-    - `theta`: The angle of rotation in radians.
-
-    Returns:
-    A 2-element vector representing the rotated point.
-    """
-    x = pt - x0
-    xr = x[1]*cos(theta) - x[2]*sin(theta)
-    yr = x[2]*cos(theta) + x[1]*sin(theta)
-    return [xr, yr] + x0
 end
 
 function profileFromParams(lengths, halfThickness, theta; s=0:0.01:1, mirror=false)
