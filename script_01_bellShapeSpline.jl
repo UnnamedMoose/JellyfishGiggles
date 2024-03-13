@@ -19,14 +19,14 @@ include("./src/splines.jl")
 s = 0:0.01:1
 
 # ===
-# Bell shape parameters.
-halfThicknesses = hcat(
-    [0.097, 0.099, 0.090],
-    [0.097, 0.099, 0.090],
-    [0.083, 0.102, 0.080],
-    [0.063, 0.071, 0.049],
-    [0.0335, 0.042, 0.0345],
-    [0.011, 0.011, 0.011],
+# Bell shape parameters - each row is for a separate segment, three snapshots measured in total.
+thetas = hcat(
+    [0., 0., 0.],
+    [0., 0., 0.],
+    [0.390, 0.11, 0.37],
+    [0.400, 0.731, 0.920],
+    [0.950, 1.75, 1.44],
+    [2.200, 0.125, 2.100],
 )'
 
 lengths = hcat(
@@ -38,36 +38,82 @@ lengths = hcat(
     [0.250, 0.165, 0.250],
 )'
 
-thetas = hcat(
-    [0., 0., 0.],
-    [0., 0., 0.],
-    [0.390, 0.11, 0.37],
-    [0.400, 0.731, 0.920],
-    [0.950, 1.75, 1.44],
-    [2.200, 0.125, 2.100],
+halfThicknesses = hcat(
+    [0.097, 0.099, 0.090],
+    [0.097, 0.099, 0.090],
+    [0.083, 0.102, 0.080],
+    [0.063, 0.071, 0.049],
+    [0.0335, 0.042, 0.0345],
+    [0.011, 0.011, 0.011],
 )'
 
 # Digitised from Costello plot.
 #timeVals = [0, 0.01, 0.2, 0.4, 0.95, 1.0]
-timeVals = [0.04836558, 0.22848566, 0.41027352, 1.39926618, 1.57771848, 1.76617745]
+# timeVals = [0.04836558, 0.22848566, 0.41027352, 1.39926618, 1.57771848, 1.76617745];
+timeVals = [0, 0.13, 0.27]
 
 # ===
-# Test smooth interpolation using NURBS
-t = (timeVals.-timeVals[1])
-t = t ./ t[end]
-cps = hcat([t, thetas[6, :]]...)
-cps = SArray{Tuple{2, length(timeVals)}}(cps)
-cps_m = MMatrix(cps)
-weights = SA[1., 1., 1., 1., 1., 1.,]
-knots =   SA[0, 0, 0, 1, 1, 1., 2., 2., 2., 3., 3., 3., 4., 4., 4., 5., 5., 5.] / 5.
-# make a nurbs curve
-curve = NurbsCurve(cps_m, knots, weights)
-#curve = BSplineCurve(cps_m; degree=2)
-xy = hcat([curve(u, 0) for u in s]...)
+# Regression using splines.
+tSplineCps = [0, 0.025, 0.15, 0.25, 0.45, 0.9, 1.0]
+
+cps_thetas = hcat([
+    [0., 0.,        0., 0., 0.,       0., 0.],
+    [0., 0.,        0., 0., 0.,       0., 0.],
+    [0.39, 0.39,        0., 0.38, 0.39,       0.39, 0.39],
+    [0.4, 0.4,        0.75, 1.0, 0.6,       0.4, 0.4],
+    [0.95, 0.95,        1.95, 1.4, 1.1,       0.95, 0.95],
+    [2.2, 2.2,        -0.5, 2.1, 2.15,       2.2, 2.2],
+]...)'
+
+cps_lengths = hcat([
+    [0.02, 0.02,        0.01, 0.025, 0.024,       0.02, 0.02],
+    [0.04, 0.04,        0.02, 0.052, 0.049,       0.04, 0.04],
+    [0.12, 0.12,        0.105, 0.145, 0.135,       0.12, 0.12],
+    [0.194, 0.194,        0.27, 0.194, 0.194,       0.194, 0.194],
+    [0.228, 0.228,        0.16, 0.225, 0.228,       0.228, 0.228],
+    [0.250, 0.250,        0.135, 0.245, 0.250,       0.250, 0.250],
+]...)'
+
+cps_halfThicknesses = hcat([
+    [0.097, 0.097,        0.1005, 0.0875, 0.095,       0.097, 0.097],
+    [0.097, 0.097,        0.1005, 0.0875, 0.095,       0.097, 0.097],
+    [0.083, 0.083,        0.11, 0.0785, 0.08,       0.083, 0.083],
+    [0.063, 0.063,        0.075, 0.045, 0.055,       0.063, 0.063],
+    [0.0335, 0.0335,        0.045, 0.0345, 0.034,       0.0335, 0.0335],
+    [0.011, 0.011,        0.011, 0.011, 0.011,       0.011, 0.011],
+]...)'
+
+yArr = thetas
+cps_arr = cps_thetas
+
+# yArr = lengths
+# cps_arr = cps_lengths
+
+# yArr = halfThicknesses
+# cps_arr = cps_halfThicknesses
+
+color_range = [RGB(get(ColorSchemes.algae, k)) for k in range(0, 1, length=length(tSplineCps))]
+
+p = plot(dpi=200)
+for i in 1:size(cps_arr, 1)
+    # Data to be regresed.
+    t = hcat([timeVals..., 1.])
+    y = hcat([yArr[i, :]..., yArr[i, 1]])
+    
+    # Pick control points from the array and make a spline
+    cps_y = cps_arr[i, :]
+    cps = hcat([tSplineCps, cps_y]...)'
+    pu = old_evaluate_spline(cps, s)
+
+    # Plot
+    plot!(pu[1, :], pu[2, :], label="", linewidth=3, color=color_range[i])
+    plot!(cps[1, :], cps[2, :], linestyle=:dash, marker=:circle, label="", color=color_range[i])
+    plot!(t, y, linestyle=:dash, marker=:square, label="", color=color_range[i])
+end
+plot!(show=true)
 
 
-plot(t, thetas[6, :], show=true, linestyle=:dash, marker=:circle, label="", color=:orange)
-plot!(xy[1, :], xy[2, :])
+
 
 #=
 # Add the first element as last to complete the cycle. Repeat at small offsets
