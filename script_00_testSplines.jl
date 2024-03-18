@@ -7,6 +7,7 @@ using ColorSchemes
 using Optim
 
 using ParametricBodies
+#include("D:/git/ParametricBodies.jl/src/NurbsCurves.jl")
 
 include("./src/splines.jl")
 #using .JellyfishPhysics
@@ -84,5 +85,3 @@ plot!(pl[1, :], pl[2, :], label="", color=:orange)
 plot!(cps[1, :], cps[2, :], linestyle=:dash, marker=:circle, label="", color=:orange)
 
 savefig("outputs/plot_00_testSplines_testSplinesAndRotation.png")
-
-

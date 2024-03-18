@@ -5,9 +5,10 @@ using StaticArrays
 using Interpolations
 using ColorSchemes
 using Optim
-
 using StaticArrays
 using CUDA
+
+using ParametricBodies
 
 function pbSpline(cps, s; deg=2)
     """ Handy wrapper around ParametricBodies.jl spline class. """
@@ -70,7 +71,8 @@ function getSegmentPosition(iSeg, tTarget, cps; NiterMax=100, tol=1e-6, printout
 
         # Pick control points from the array and make a spline
         cps_y = cps[[1, iSeg+1], :]
-        t, y = old_evaluate_spline(cps_y, [sx])
+        #t, y = old_evaluate_spline(cps_y, [sx])
+        t, y = pbSpline(cps_y, [sx])
 
         if printout
             println(i, " ", abs(t-tTarget), " ", t)
@@ -125,7 +127,8 @@ function shapeForTime(t; s=0:0.01:1)
     # if mirror
     #     cps = hcat(cps, reverse(cps[:, 1:end-1].*[-1.0, 1.0], dims=2))
     # end
-    xy = old_evaluate_spline(cps, s)
+    #xy = old_evaluate_spline(cps, s)
+    xy = pbSpline(cps, s)
 
     return xy, cps, hcat([seg_length, seg_thickness, seg_theta]...)
 end
@@ -188,7 +191,7 @@ function old_bspline(cv, s; d=3)
 end
 
 # TODO obsolete
-function old_evaluate_spline(cps, s)
+function xold_evaluate_spline(cps, s)
     """
         evaluate_spline(cps, s)
 
