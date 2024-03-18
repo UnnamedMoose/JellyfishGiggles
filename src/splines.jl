@@ -16,24 +16,6 @@ function pbSpline(cps, s; deg=2)
     return hcat([curve(u, 0) for u in s]...)
 end
 
-function polyArea(xy)
-    """
-        polyArea(xy)
-
-    Calculate the area of a polygon using the Shoelace formula.
-
-    The `polyArea` function calculates the area of a polygon defined by its vertices using the Shoelace formula.
-
-    Arguments:
-    - `xy`: A 2xN matrix containing the (x, y) coordinates of the polygon's vertices. They do not need to
-        form a closed shape, but it is assumed that the first and last points are connected by a straight line.
-
-    Returns:
-    The area of the polygon.
-    """
-    return 0.5*abs(dot(xy[1, :], [xy[2, 2:end]..., xy[2, 1]]) - dot(xy[2, :], [xy[1, 2:end]..., xy[1, 1]]))
-end
-
 function rotatePoint(pt, x0, theta)
     """
         rotatePoint(pt, x0, theta)
@@ -56,6 +38,97 @@ function rotatePoint(pt, x0, theta)
     return [xr, yr] + x0
 end
 
+function polyArea(xy)
+    """
+        polyArea(xy)
+
+    Calculate the area of a polygon using the Shoelace formula.
+
+    The `polyArea` function calculates the area of a polygon defined by its vertices using the Shoelace formula.
+
+    Arguments:
+    - `xy`: A 2xN matrix containing the (x, y) coordinates of the polygon's vertices. They do not need to
+        form a closed shape, but it is assumed that the first and last points are connected by a straight line.
+
+    Returns:
+    The area of the polygon.
+    """
+    return 0.5*abs(dot(xy[1, :], [xy[2, 2:end]..., xy[2, 1]]) - dot(xy[2, :], [xy[1, 2:end]..., xy[1, 1]]))
+end
+
+function getSegmentPosition(iSeg, tTarget, cps; NiterMax=100, tol=1e-6, printout=false)
+    # For an arbitrary t/T value, need to either pre-compute the splines describing
+    # the motion of each segment at the right time values or have an iterative routine
+    # for matching the desired time.
+    s0 = 0.
+    s1 = 1.
+    y = 0.
+
+    for i in 1:1:NiterMax
+        # Evaluate at the centre of the trust region.
+        sx = (s0 + s1) / 2.
+
+        # Pick control points from the array and make a spline
+        cps_y = cps[[1, iSeg+1], :]
+        t, y = old_evaluate_spline(cps_y, [sx])
+
+        if printout
+            println(i, " ", abs(t-tTarget), " ", t)
+        end
+
+        # Check if converge. Shrink the trust region if not.
+        if abs(t-tTarget) < tol
+            return y
+        end
+        if t > tTarget
+            s1 = sx
+        else
+            s0 = sx
+        end
+    end
+
+    # Return the best available approximation even though convergence has not been met.
+    return y
+end
+
+function shapeForTime(t; s=0:0.01:1)
+    # Get parameter values for this point in the cycle.
+    seg_theta = []
+    seg_length = []
+    seg_thickness = []
+    for iSeg in 1:size(cps_thetas, 1)-1
+        push!(seg_theta, getSegmentPosition(iSeg, t, cps_thetas))
+        push!(seg_length, getSegmentPosition(iSeg, t, cps_lengths))
+        push!(seg_thickness, getSegmentPosition(iSeg, t, cps_halfThicknesses))
+            # old_evaluate_spline(hcat([tSplineCps, cps_thetas[i, :]]...)', [t])[2])
+    end
+
+    # Construct the control points from the params.
+    cps_u = zeros(2, size(seg_length, 1))
+    cps_l = zeros(2, size(seg_length, 1))
+
+    xLast = [-seg_length[1]/2, -seg_thickness[1]]
+
+    for i in 1:length(seg_thickness)
+        xNew = rotatePoint(xLast + [seg_length[i], 0], xLast, -seg_theta[i])
+        xMid = (xLast + xNew) / 2.0
+        vTan = (xNew - xLast) / norm(xNew - xLast)
+        vPer = [-vTan[2], vTan[1]]
+
+        cps_u[:, i] = xMid + seg_thickness[i]*vPer
+        cps_l[:, i] = xMid - seg_thickness[i]*vPer
+
+        xLast = xNew
+    end
+
+    cps = hcat(cps_u, reverse(cps_l, dims=2))
+    # if mirror
+    #     cps = hcat(cps, reverse(cps[:, 1:end-1].*[-1.0, 1.0], dims=2))
+    # end
+    xy = old_evaluate_spline(cps, s)
+
+    return xy, cps, hcat([seg_length, seg_thickness, seg_theta]...)
+end
 
 
 # TODO obsolete - now using ParametricBodies.jl
@@ -159,7 +232,7 @@ function profileFromParams(lengths, halfThickness, theta; s=0:0.01:1, mirror=fal
     cps_l = zeros(2, size(lengths, 1))
 
     xLast = [-lengths[1]/2, -halfThickness[1]]
-    
+
     for i in 1:length(halfThickness)
         xNew = rotatePoint(xLast + [lengths[i], 0], xLast, -theta[i])
         xMid = (xLast + xNew) / 2.0
@@ -168,7 +241,7 @@ function profileFromParams(lengths, halfThickness, theta; s=0:0.01:1, mirror=fal
 
         cps_u[:, i] = xMid + halfThickness[i]*vPer
         cps_l[:, i] = xMid - halfThickness[i]*vPer
-        
+
         xLast = xNew
     end
 
@@ -178,7 +251,7 @@ function profileFromParams(lengths, halfThickness, theta; s=0:0.01:1, mirror=fal
     end
     xy = evaluate_spline(cps, s)
     area = polyArea(xy)
-    
+
     return xy, cps, area
 end
 
@@ -239,7 +312,7 @@ function params_for_profile(tOverT, timeVals, lengths, halfThicknesses, thetas; 
         thkFit[i] = itp_t(tOverT)
         thetaFit[i] = itp_a(tOverT)
     end
-    
+
     if aTarget > 0.0
         f(x) = thicknessTarget(x[1], Lfit, thkFit, thetaFit)
         result = optimize(f, [0.0], [1.0], [0.5])
@@ -249,4 +322,3 @@ function params_for_profile(tOverT, timeVals, lengths, halfThicknesses, thetas; 
 
     return Lfit, thkFit, thetaFit
 end
-

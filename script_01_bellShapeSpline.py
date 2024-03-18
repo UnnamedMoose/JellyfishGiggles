@@ -99,6 +99,7 @@ def rotatePoint(pt, x0, theta):
 # %% Read reference data for the deformed shape.
 
 # From: Bajacaret2009_fig6_bellMotion_cropped
+# => NOTE unsused
 ts = []
 refDeformedShape = []
 for f in os.listdir("./dataset_01_medusae"):
@@ -159,7 +160,6 @@ cps = np.array([
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pu = np.array([bspline(cps, u, d=2) for u in s])
-regressedShapes.append(pu)
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[0])
 
 # 1st cycle lower
@@ -171,10 +171,10 @@ cps = np.array([
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pl = np.array([bspline(cps, u, d=2) for u in s])
-regressedShapes.append(pl)
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[0])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
+regressedShapes.append(xy)
 area = polyArea(xy[:, 0], xy[:, 1])
 ax.text(0, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
 np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot1.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
@@ -192,7 +192,6 @@ cps = np.array([
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pu = np.array([bspline(cps, u, d=2) for u in s])
-regressedShapes.append(pu)
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[1])
 
 # 2nd cycle lower
@@ -207,10 +206,10 @@ cps = np.array([
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pl = np.array([bspline(cps, u, d=2) for u in s])
-regressedShapes.append(pl)
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[1])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
+regressedShapes.append(xy)
 area = polyArea(xy[:, 0], xy[:, 1])
 ax.text(0.5, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
 np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot2.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
@@ -224,7 +223,6 @@ cps = np.array([
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pu = np.array([bspline(cps, u, d=2) for u in s])
-regressedShapes.append(pu)
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[2])
 
 # 3rd cycle lower
@@ -236,10 +234,10 @@ cps = np.array([
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
 pl = np.array([bspline(cps, u, d=2) for u in s])
-regressedShapes.append(pl)
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[2])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
+regressedShapes.append(xy)
 area = polyArea(xy[:, 0], xy[:, 1])
 ax.text(1., 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
 np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot3.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
@@ -365,9 +363,9 @@ ax.set_xlabel("Bell width coordinate")
 ax.set_ylabel("Bell height coordinate")
 
 # Plot the shapes.
-for i in range(2):
-    for j in range(3):
-        ax.plot(regressedShapes[j*2+i][:, 0], regressedShapes[j*2+i][:, 1], "k-", alpha=0.5)
+# for i in range(2):
+for j in range(3):
+    ax.plot(regressedShapes[j][:, 0], regressedShapes[j][:, 1], "k-", alpha=0.5)
 
 # Set up axes.
 ylim = ax.get_ylim()
@@ -456,6 +454,9 @@ for i in range(L.shape[0]):
     thkFit = smoothWithSpline(timeVals, thk[i, :], t)
     thetaFit = smoothWithSpline(timeVals, theta[i, :], t)
 
+    np.savetxt("dataset_01_medusae/smoothedShapeParams_segment_{:d}_Costello2020.txt".format(i),
+        np.vstack([t, Lfit, thkFit, thetaFit]).T)
+
     axes[0].plot(timeVals, L[i, :]+i*0, "o--", c=colours[i], alpha=1)
     axes[0].plot(t, Lfit, c=colours[i], lw=2)
     axes[1].plot(timeVals, thk[i, :]+i*0, "o--", c=colours[i], alpha=1)
@@ -467,8 +468,40 @@ plt.savefig("./outputs/bellShapeEvolution_Costello2020_kinematicsParams.png", dp
 
 plt.show()
 
-# %% Test applying volume conservation
+# %% Plot the final shape for the three time instances for which we have photos.
+# TODO add thickness optimisation here as well.
 
+for i, t in enumerate([0, 0.13, 0.27]):
+    # Get parameters for each control point.
+    Lfit, thkFit, thetaFit = [], [], []
+    for j in range(L.shape[0]):
+        Lfit.append(smoothWithSpline(timeVals, L[j, :], t))
+        thkFit.append(smoothWithSpline(timeVals, thk[j, :], t))
+        thetaFit.append(smoothWithSpline(timeVals, theta[j, :], t))
+
+    # Correct thickness to achieve target cross-section area.
+    # res = scipy.optimize.minimize(
+    #     thicknessTarget, [0.],
+    #     args=(Lfit, thkFit, thetaFit),
+    #     bounds=[(0, 1)], constraints=(),
+    #     tol=1e-12, callback=None, options={"disp": False}, method="SLSQP")
+    # thkFit += (res.x[0]-0.5)/0.5*0.01
+
+    # Compute the profile.
+    xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
+
+    # Save
+    np.savetxt("dataset_01_medusae/smoothShapeCps_Costello2020_snapshot{:d}.txt".format(i), cps)
+    np.savetxt("dataset_01_medusae/smoothedShapeParams_Costello2020_snapshot{:d}.txt".format(i),
+        np.vstack([Lfit, thkFit, thetaFit]).T)
+
+    fig, ax = plt.subplots()
+    ax.plot(xy[:, 0], xy[:, 1], "r-", lw=2)
+    ax.plot(regressedShapes[i][:, 0]-i*0.5, regressedShapes[i][:, 1], "k--", lw=2)
+
+plt.show()
+
+# %% Test applying volume conservation
 
 def thicknessTarget(x, Lfit, thkFit, thetaFit):
     dt = (x-0.5)/0.5*0.01
@@ -676,4 +709,3 @@ else:
 # lns = onChanged(0.)
 
 plt.show()
-
