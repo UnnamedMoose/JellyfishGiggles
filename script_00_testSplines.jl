@@ -24,7 +24,7 @@ cps_u = hcat(
     [0.389, -0.52]
 )
 
-pu = old_evaluate_spline(cps_u, s)
+pu = xold_evaluate_spline(cps_u, s)
 
 # 1st cycle lower
 cps_l = hcat(
@@ -34,7 +34,7 @@ cps_l = hcat(
     [0.389, -0.52]
 )
 
-pl = old_evaluate_spline(cps_l, s)
+pl = xold_evaluate_spline(cps_l, s)
 xy = hcat(pu, reverse(pl[:, 1:end-1], dims=2))
 
 # Plot own spline

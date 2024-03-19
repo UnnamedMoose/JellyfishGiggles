@@ -93,7 +93,7 @@ function getSegmentPosition(iSeg, tTarget, cps; NiterMax=100, tol=1e-6, printout
     return y
 end
 
-function shapeForTime(t; s=0:0.01:1)
+function shapeForTime(t; mirror=false, evaluate=true, s=0:0.01:1)
     # Get parameter values for this point in the cycle.
     seg_theta = []
     seg_length = []
@@ -124,13 +124,17 @@ function shapeForTime(t; s=0:0.01:1)
     end
 
     cps = hcat(cps_u, reverse(cps_l, dims=2))
-    # if mirror
-    #     cps = hcat(cps, reverse(cps[:, 1:end-1].*[-1.0, 1.0], dims=2))
-    # end
-    #xy = old_evaluate_spline(cps, s)
-    xy = pbSpline(cps, s)
-
-    return xy, cps, hcat([seg_length, seg_thickness, seg_theta]...)
+    if mirror
+        cps = hcat(cps, reverse(cps[:, 1:end-1].*[-1.0, 1.0], dims=2))
+    end
+    
+    if evaluate
+        #xy = old_evaluate_spline(cps, s)
+        xy = pbSpline(cps, s)
+        return xy, cps, hcat([seg_length, seg_thickness, seg_theta]...)
+    else
+        return cps
+    end
 end
 
 

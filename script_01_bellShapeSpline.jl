@@ -122,7 +122,7 @@ for i in 1:Nsegments
 end
 
 for i in 1:6
-    filename = @sprintf("D:/git/JellyfishGiggles/dataset_01_medusae/smoothedShapeParams_segment_%d_Costello2020.txt", i-1)
+    filename = @sprintf("./dataset_01_medusae/smoothedShapeParams_segment_%d_Costello2020.txt", i-1)
     refData = readdlm(filename)
     plot!(refData[:, 1], refData[:, 3], linewidth=2, color=:black, linestyle=:dash, label="")
 end
@@ -142,7 +142,7 @@ for i in 1:Nsegments
 end
 
 for i in 1:6
-    filename = @sprintf("D:/git/JellyfishGiggles/dataset_01_medusae/smoothedShapeParams_segment_%d_Costello2020.txt", i-1)
+    filename = @sprintf("./dataset_01_medusae/smoothedShapeParams_segment_%d_Costello2020.txt", i-1)
     refData = readdlm(filename)
     plot!(refData[:, 1], refData[:, 2], linewidth=2, color=:black, linestyle=:dash, label="")
 end
@@ -162,7 +162,7 @@ for i in 1:Nsegments
 end
 
 for i in 1:6
-    filename = @sprintf("D:/git/JellyfishGiggles/dataset_01_medusae/smoothedShapeParams_segment_%d_Costello2020.txt", i-1)
+    filename = @sprintf("./dataset_01_medusae/smoothedShapeParams_segment_%d_Costello2020.txt", i-1)
     refData = readdlm(filename)
     plot!(refData[:, 1], refData[:, 4], linewidth=2, color=:black, linestyle=:dash, label="")
 end
@@ -329,8 +329,8 @@ plot!(abs.(x_ref_b), y_ref_b, marker=:v, linewidth=0, color=:red, markersize=2,
 plot!(xy[1, :], xy[2, :], linewidth=2, color=:red, label="Current model, t/T=0.00")
 plot!(cps[1, :], cps[2, :], linewidth=2, color=:red, marker=:square, linestyle=:dash, markersize=4, label="")
 
-shape_Costello_regressed = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/shape_Costello2020_snapshot1.txt")
-refCps = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/smoothShapeCps_Costello2020_snapshot0.txt")
+shape_Costello_regressed = readdlm("./dataset_01_medusae/shape_Costello2020_snapshot1.txt")
+refCps = readdlm("./dataset_01_medusae/smoothShapeCps_Costello2020_snapshot0.txt")
 plot!(shape_Costello_regressed[:, 1], shape_Costello_regressed[:, 2], linewidth=2, color=:black, label="")
 plot!(refCps[:, 1] .+ 0.0, refCps[:, 2], linewidth=2, marker=:x, linestyle=:dashdotdot, color=:black,
     markersize=5, label="")
@@ -347,8 +347,8 @@ plot!(abs.(x_ref_b) .+ 0.5, y_ref_b, marker=:v, linewidth=0, color=:green, marke
 plot!(xy[1, :] .+ 0.5, xy[2, :], linewidth=2, color=:green, label="Current model, t/T=0.13")
 plot!(cps[1, :] .+ 0.5, cps[2, :], linewidth=2, color=:green, marker=:square, linestyle=:dash, markersize=4, label="")
 
-shape_Costello_regressed = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/shape_Costello2020_snapshot2.txt")
-refCps = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/smoothShapeCps_Costello2020_snapshot1.txt")
+shape_Costello_regressed = readdlm("./dataset_01_medusae/shape_Costello2020_snapshot2.txt")
+refCps = readdlm("./dataset_01_medusae/smoothShapeCps_Costello2020_snapshot1.txt")
 plot!(shape_Costello_regressed[:, 1], shape_Costello_regressed[:, 2], linewidth=2, color=:black, label="")
 plot!(refCps[:, 1] .+ 0.5, refCps[:, 2], linewidth=2, marker=:x, linestyle=:dashdotdot, color=:black,
     markersize=5, label="")
@@ -365,8 +365,8 @@ plot!(abs.(x_ref_b) .+ 1.0, y_ref_b, marker=:v, linewidth=0, color=:blue, marker
 plot!(xy[1, :] .+ 1.0, xy[2, :], linewidth=2, color=:blue, label="Current model, t/T=0.27")
 plot!(cps[1, :] .+ 1.0, cps[2, :], linewidth=2, color=:blue, marker=:square, linestyle=:dash, markersize=4, label="")
 
-shape_Costello_regressed = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/shape_Costello2020_snapshot3.txt")
-refCps = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/smoothShapeCps_Costello2020_snapshot2.txt")
+shape_Costello_regressed = readdlm("./dataset_01_medusae/shape_Costello2020_snapshot3.txt")
+refCps = readdlm("./dataset_01_medusae/smoothShapeCps_Costello2020_snapshot2.txt")
 plot!(shape_Costello_regressed[:, 1], shape_Costello_regressed[:, 2], linewidth=2, color=:black, label="")
 plot!(refCps[:, 1] .+ 1.0, refCps[:, 2], linewidth=2, marker=:x, linestyle=:dashdotdot, color=:black,
     markersize=5, label="")
@@ -384,15 +384,15 @@ function generate_frames()
         plot(xlabel="x/L", ylabel="y/L", aspect_ratio=:equal, xlims=(0, 0.75), ylims=(-0.75, 0), size=(1000, 800),
             xtickfontsize=fs, ytickfontsize=fs, xguidefontsize=fs, yguidefontsize=fs, legendfontsize=fs)
 
-        shape_Costello_regressed = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/shape_Costello2020_snapshot1.txt")
+        shape_Costello_regressed = readdlm("./dataset_01_medusae/shape_Costello2020_snapshot1.txt")
         plot!(shape_Costello_regressed[:, 1], shape_Costello_regressed[:, 2], linewidth=2, color=:red,
             linestyle=:dash, label="Costello et al., t/T=0.00")
 
-        shape_Costello_regressed = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/shape_Costello2020_snapshot2.txt")
+        shape_Costello_regressed = readdlm("./dataset_01_medusae/shape_Costello2020_snapshot2.txt")
         plot!(shape_Costello_regressed[:, 1].-0.5, shape_Costello_regressed[:, 2], linewidth=2, color=:green,
             linestyle=:dash, label="Costello et al., t/T=0.13")
 
-        shape_Costello_regressed = readdlm("D:/git/JellyfishGiggles/dataset_01_medusae/shape_Costello2020_snapshot3.txt")
+        shape_Costello_regressed = readdlm("./dataset_01_medusae/shape_Costello2020_snapshot3.txt")
         plot!(shape_Costello_regressed[:, 1].-1.0, shape_Costello_regressed[:, 2], linewidth=2, color=:blue,
             linestyle=:dash, label="Costello et al., t/T=0.27")
 
