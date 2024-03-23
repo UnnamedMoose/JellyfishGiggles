@@ -5,55 +5,12 @@ using Plots
 using CUDA
 
 include("./src/splines.jl")
-
-# Spline control points for regressing the motion of each jellyfish segment.
-# We need an implementation compatible with GPUs. This necessitates the
-# use of static arrays.
-
-Nsegments = 6
-
-cps_thetas = SMatrix{Nsegments+1, 7}(vcat([
-# t/T values
-[0, 0.025, 0.15, 0.25, 0.35, 0.45, 1.0]',
-# CP locations
-hcat([
-    [0., 0.,        0., 0., 0.,       0., 0.],
-    [0., 0.,        0., 0., 0.,       0., 0.],
-    [0.39, 0.39,        0., 0.38, 0.39,       0.39, 0.39],
-    [0.4, 0.4,        0.85, 1.2, 0.41,       0.4, 0.4],
-    [0.95, 0.95,        1.95, 1.65, 0.95,       0.95, 0.95],
-    [2.2, 2.2,        -1., 2.19, 2.2,       2.2, 2.2],
-]...)'
-]...));
-
-cps_lengths = SMatrix{Nsegments+1, 7}(vcat([
-[0, 0.025, 0.15, 0.25, 0.35, 0.45, 1.0]',
-hcat([
-    [0.02, 0.02,        0.01, 0.03, 0.022,       0.02, 0.02],
-    [0.04, 0.04,        0.02, 0.06, 0.04,       0.04, 0.04],
-    [0.12, 0.12,        0.1, 0.155, 0.11,       0.12, 0.12],
-    [0.194, 0.194,        0.275, 0.194, 0.194,       0.194, 0.194],
-    [0.228, 0.228,        0.16, 0.225, 0.228,       0.228, 0.228],
-    [0.250, 0.250,        0.135, 0.245, 0.250,       0.250, 0.250],
-]...)'
-]...));
-
-cps_halfThicknesses = SMatrix{Nsegments+1, 7}(vcat([
-[0, 0.025, 0.15, 0.25, 0.35, 0.45, 1.0]',
-hcat([
-    [0.097, 0.097,        0.1005, 0.0875, 0.097,       0.097, 0.097],
-    [0.097, 0.097,        0.1005, 0.0875, 0.097,       0.097, 0.097],
-    [0.083, 0.083,        0.11, 0.075, 0.083,       0.083, 0.083],
-    [0.063, 0.063,        0.075, 0.04, 0.063,       0.063, 0.063],
-    [0.0335, 0.0335,        0.045, 0.0345, 0.034,       0.0335, 0.0335],
-    [0.011, 0.011,        0.011, 0.011, 0.011,       0.011, 0.011],
-]...)'
-]...));
+include("./src/kinematics.jl")
 
 # parameters
 function dynamicSpline(;L=2^5, Re=100, U=1, ϵ=0.5, thk=2ϵ+√2, mem=Array)
     # Create the initial shape.    
-    cps = shapeForTime(0.0, evaluate=false, mirror=true)
+    cps = shapeForTime(0.0, kinematics_0_baseline, evaluate=false, mirror=true)
     # Position and scale.
     cps = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.] .+ [2,3]) * L
 
@@ -94,7 +51,7 @@ anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
     t = sum(sim.flow.Δt[1:end-1])
     
     while t < tᵢ*sim.L/sim.U
-        cps = shapeForTime(tᵢ % 1.0, evaluate=false, mirror=true)
+        cps = shapeForTime(tᵢ % 1.0, kinematics_0_baseline, evaluate=false, mirror=true)
         new_pnts = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.] .+ [2,3]) * sim.L
         
         ParametricBodies.update!(sim.body, new_pnts, sim.flow.Δt[end])
@@ -102,10 +59,6 @@ anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
         mom_step!(sim.flow, sim.pois)
         t += sim.flow.Δt[end]
     end
-
-    # Compute the forces.
-    pforce(surf::NurbsCurve, p::AbstractArray{T}; N=64) where T = integrate(s->PForce(sim.body.surf, sim.flow.p, s), sim.body.surf; N)
-#    vforce(surf::NurbsCurve, u::AbstractArray{T}; N=64) where T = integrate(s->VForce(sim.body.surf, sim.flow.u, s), sim.body.surf; N)
 
     # Flow plot
     @inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L / sim.U
@@ -115,8 +68,8 @@ anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
              aspect_ratio=:equal, legend=false, border=:none)
     plot!(sim.body.surf; add_cp=true)
     
-    measure_sdf!(sim.flow.σ, sim.body, WaterLily.time(sim))
-    contour!(sim.flow.σ', levels=[0], color=:magenta, linewidth=2, legend=false)
+    #measure_sdf!(sim.flow.σ, sim.body, WaterLily.time(sim))
+    #contour!(sim.flow.σ', levels=[0], color=:magenta, linewidth=2, legend=false)
 
     # print time step
     println("tU/L=", round(tᵢ, digits=4), ", ΔtU/L=", round(sim.flow.Δt[end]/sim.L*sim.U, digits=3))

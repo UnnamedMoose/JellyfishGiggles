@@ -15,6 +15,7 @@ using ParametricBodies
 #using .JellyfishPhysics
 
 include("./src/splines.jl")
+include("./src/kinematics.jl")
 
 # ===
 # Test splines
@@ -55,50 +56,6 @@ halfThicknesses = hcat(
 # timeVals = [0.04836558, 0.22848566, 0.41027352, 1.39926618, 1.57771848, 1.76617745];
 timeVals = [0, 0.13, 0.27]
 
-# Spline control points for regressing the motion of each jellyfish segment.
-# We need an implementation compatible with GPUs. This necessitates the
-# use of static arrays.
-
-Nsegments = 6
-
-cps_thetas = SMatrix{Nsegments+1, 7}(vcat([
-# t/T values
-[0, 0.025, 0.15, 0.25, 0.35, 0.45, 1.0]',
-# CP locations
-hcat([
-    [0., 0.,        0., 0., 0.,       0., 0.],
-    [0., 0.,        0., 0., 0.,       0., 0.],
-    [0.39, 0.39,        0., 0.38, 0.39,       0.39, 0.39],
-    [0.4, 0.4,        0.85, 1.2, 0.41,       0.4, 0.4],
-    [0.95, 0.95,        1.95, 1.65, 0.95,       0.95, 0.95],
-    [2.2, 2.2,        -1., 2.19, 2.2,       2.2, 2.2],
-]...)'
-]...));
-
-cps_lengths = SMatrix{Nsegments+1, 7}(vcat([
-[0, 0.025, 0.15, 0.25, 0.35, 0.45, 1.0]',
-hcat([
-    [0.02, 0.02,        0.01, 0.03, 0.022,       0.02, 0.02],
-    [0.04, 0.04,        0.02, 0.06, 0.04,       0.04, 0.04],
-    [0.12, 0.12,        0.1, 0.155, 0.11,       0.12, 0.12],
-    [0.194, 0.194,        0.275, 0.194, 0.194,       0.194, 0.194],
-    [0.228, 0.228,        0.16, 0.225, 0.228,       0.228, 0.228],
-    [0.250, 0.250,        0.135, 0.245, 0.250,       0.250, 0.250],
-]...)'
-]...));
-
-cps_halfThicknesses = SMatrix{Nsegments+1, 7}(vcat([
-[0, 0.025, 0.15, 0.25, 0.35, 0.45, 1.0]',
-hcat([
-    [0.097, 0.097,        0.1005, 0.0875, 0.097,       0.097, 0.097],
-    [0.097, 0.097,        0.1005, 0.0875, 0.097,       0.097, 0.097],
-    [0.083, 0.083,        0.11, 0.075, 0.083,       0.083, 0.083],
-    [0.063, 0.063,        0.075, 0.04, 0.063,       0.063, 0.063],
-    [0.0335, 0.0335,        0.045, 0.0345, 0.034,       0.0335, 0.0335],
-    [0.011, 0.011,        0.011, 0.011, 0.011,       0.011, 0.011],
-]...)'
-]...));
-
 # Function for smoothing the shape parameters. Used for plotting only.
 function smoothShapeParams(iSeg, cps_arr, s)
     # Pick control points from the array and make a spline
@@ -108,13 +65,13 @@ function smoothShapeParams(iSeg, cps_arr, s)
     return cps_y, pu
 end
 
-color_range = [RGB(get(ColorSchemes.algae, k)) for k in range(0, 1, length=Nsegments)];
+color_range = [RGB(get(ColorSchemes.algae, k)) for k in range(0, 1, length=kinematics_0_baseline.Nsegments)];
 
 # ===
 p = plot(dpi=200, xlabel="t/T", ylabel="Segment thickness")
 # Ignore the time values in the loop.
-for i in 1:Nsegments
-    cps, pu = smoothShapeParams(i, cps_halfThicknesses, 0:0.01:1.0)
+for i in 1:kinematics_0_baseline.Nsegments
+    cps, pu = smoothShapeParams(i, kinematics_0_baseline.cps_halfThicknesses, 0:0.01:1.0)
     plot!(pu[1, :], pu[2, :], label="", linewidth=3, color=color_range[i])
     plot!(cps[1, :], cps[2, :], linestyle=:dashdot, marker=:square, label="", color=color_range[i])
     plot!(vcat(timeVals, 1.0), vcat(halfThicknesses[i, :], halfThicknesses[i, 1]),
@@ -133,8 +90,8 @@ plot!(show=true)
 # ===
 p = plot(dpi=200, xlabel="t/T", ylabel="Segment length")
 
-for i in 1:Nsegments
-    cps, pu = smoothShapeParams(i, cps_lengths, 0:0.01:1.0)
+for i in 1:kinematics_0_baseline.Nsegments
+    cps, pu = smoothShapeParams(i, kinematics_0_baseline.cps_lengths, 0:0.01:1.0)
     plot!(pu[1, :], pu[2, :], label="", linewidth=3, color=color_range[i])
     plot!(cps[1, :], cps[2, :], linestyle=:dashdot, marker=:square, label="", color=color_range[i])
     plot!(vcat(timeVals, 1.0), vcat(lengths[i, :], lengths[i, 1]),
@@ -153,8 +110,8 @@ plot!(show=true)
 # ===
 p = plot(dpi=200, xlabel="t/T", ylabel="Segment angle")
 
-for i in 1:Nsegments
-    cps, pu = smoothShapeParams(i, cps_thetas, 0:0.01:1.0)
+for i in 1:kinematics_0_baseline.Nsegments
+    cps, pu = smoothShapeParams(i, kinematics_0_baseline.cps_thetas, 0:0.01:1.0)
     plot!(pu[1, :], pu[2, :], label="", linewidth=3, color=color_range[i])
     plot!(cps[1, :], cps[2, :], linestyle=:dashdot, marker=:square, label="", color=color_range[i])
     plot!(vcat(timeVals, 1.0), vcat(thetas[i, :], thetas[i, 1]),
@@ -172,7 +129,7 @@ plot!(show=true)
 
 # Quick functionality test for the iterative t/T finding algorithm.
 iSeg = 2
-getSegmentPosition(iSeg, 0.21, cps_halfThicknesses, printout=true)
+getSegmentPosition(iSeg, 0.21, kinematics_0_baseline.cps_halfThicknesses, printout=true)
 
 # ===
 # These are the shapes measured by Costello.
@@ -318,7 +275,7 @@ end
 plot(xlabel="x/L", ylabel="y/L", aspect_ratio=:equal, size=(1000, 450))
 
 # ---
-xy, cps, segParams1 = shapeForTime(0.)
+xy, cps, segParams1 = shapeForTime(0., kinematics_0_baseline)
 x_ref_a, y_ref_a = shapeCostello(1)
 x_ref_b, y_ref_b = shapeCostello(4)
 
@@ -336,7 +293,7 @@ plot!(refCps[:, 1] .+ 0.0, refCps[:, 2], linewidth=2, marker=:x, linestyle=:dash
     markersize=5, label="")
 
 # ---
-xy, cps, segParams2 = shapeForTime(0.13)
+xy, cps, segParams2 = shapeForTime(0.13, kinematics_0_baseline)
 x_ref_a, y_ref_a = shapeCostello(2)
 x_ref_b, y_ref_b = shapeCostello(5)
 
@@ -354,7 +311,7 @@ plot!(refCps[:, 1] .+ 0.5, refCps[:, 2], linewidth=2, marker=:x, linestyle=:dash
     markersize=5, label="")
 
 # ---
-xy, cps, segParams3 = shapeForTime(0.27)
+xy, cps, segParams3 = shapeForTime(0.27, kinematics_0_baseline)
 x_ref_a, y_ref_a = shapeCostello(4)
 x_ref_b, y_ref_b = shapeCostello(6)
 
@@ -379,7 +336,7 @@ savefig("outputs/plot_02_bellShape_staticCostelloComparison.png")
 function generate_frames()
     anim = Animation()
     for x in 0:0.01:1
-        xy, cps, segParams = shapeForTime(x)
+        xy, cps, segParams = shapeForTime(x, kinematics_0_baseline)
         fs = 14
         plot(xlabel="x/L", ylabel="y/L", aspect_ratio=:equal, xlims=(0, 0.75), ylims=(-0.75, 0), size=(1000, 800),
             xtickfontsize=fs, ytickfontsize=fs, xguidefontsize=fs, yguidefontsize=fs, legendfontsize=fs)
@@ -413,90 +370,3 @@ anim = generate_frames()
 # Save the animation as a GIF
 gif(anim, "outputs/plot_03_animatedBellShape.gif", fps=10)
 
-
-
-
-
-
-#=
-# Add the first element as last to complete the cycle. Repeat at small offsets
-# to force zero gradient to the curves and make for a smooth transition.
-halfThicknesses = hcat(halfThicknesses[:, 1:1], halfThicknesses, halfThicknesses[:, 1:1], halfThicknesses[:, 1:1])
-lengths = hcat(lengths[:, 1:1], lengths, lengths[:, 1:1], lengths[:, 1:1])
-thetas  = hcat(thetas[:, 1:1], thetas, thetas[:, 1:1], thetas[:, 1:1])
-
-# Create a layout with 3 rows and 1 column
-layout = @layout([a; b; c])
-p = plot(layout=(3, 1), dpi=200, size=(1200, 800), show=true)
-color_range = [RGB(get(ColorSchemes.algae, k)) for k in range(0, 1, length=size(lengths, 2))]
-for i in 1:size(lengths, 1)
-    plot!(timeVals, lengths[i, :], linestyle=:dash, marker=:circle,
-        markersize=2, alpha=0.2, label="", ylabel="Length", subplot=1, color=color_range[i])
-    plot!(timeVals, halfThicknesses[i, :], linestyle=:dash, marker=:circle,
-        markersize=2, alpha=0.2, label="", ylabel="Halfthickness", subplot=2, color=color_range[i])
-    plot!(timeVals, thetas[i, :], linestyle=:dash, marker=:circle,
-        markersize=2, alpha=0.2, label="", ylabel="Angle", subplot=3, color=color_range[i])
-
-    # Smooth curves
-    itp_l = interpolate(timeVals, lengths[i, :], SteffenMonotonicInterpolation())
-    itp_t = interpolate(timeVals, halfThicknesses[i, :], SteffenMonotonicInterpolation())
-    itp_a = interpolate(timeVals, thetas[i, :], SteffenMonotonicInterpolation())
-
-    # Generate points for the smooth curves
-    smooth_time = 0:0.01:1
-    plot!(smooth_time, itp_l.(smooth_time), subplot=1, label="", color=color_range[i])
-    plot!(smooth_time, itp_t.(smooth_time), subplot=2, label="", color=color_range[i])
-    plot!(smooth_time, itp_a.(smooth_time), subplot=3, label="", color=color_range[i])
-end
-
-savefig("outputs/plot_01_bellShape_segmentParams.png")
-=#
-
-#=
-# ===
-# Bell shape.
-
-Lfit, thkFit, thetaFit = params_for_profile(0.35, timeVals, lengths, halfThicknesses, thetas, aTarget=-1.0)
-Lfit_o, thkFit_o, thetaFit_o = params_for_profile(0.35, timeVals, lengths, halfThicknesses, thetas)
-
-xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
-xy_o, cps_o, area_o = profileFromParams(Lfit_o, thkFit_o, thetaFit_o)
-
-plot(xy[1, :], xy[2, :], dpi=200, size=(1200, 800), label="Interpolated profile")
-plot!(xy_o[1, :], xy_o[2, :], linestyle=:dashdot, label="Interpolated profile with area conservation enforced")
-plot!(cps[1, :], cps[2, :], marker=:circle, linestyle=:dash, label="")
-annotate!(0.05, -0.52, "A_target=\$$(round(0.0644, digits=4))\$ units\$^2\$", halign=:left)
-annotate!(0.05, -0.55, "A=\$$(round(area, digits=4))\$ units\$^2\$", halign=:left)
-annotate!(0.05, -0.58, "A_opt=\$$(round(area_o, digits=4))\$ units\$^2\$", halign=:left)
-savefig("outputs/plot_02_bellShape_finalShape.png")
-
-# ===
-# Animate the shape for one cycle.
-
-anim = @animate for i ∈ 1:101
-    t = (i/101) % 1.0
-    Lfit, thkFit, thetaFit = params_for_profile(t, timeVals, lengths, halfThicknesses, thetas)
-    xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit; mirror=true)
-    plot(xy[1, :], xy[2, :], label="", color=:red, xlimits=(-0.75, 0.75), lw=2, ylimits=(-0.75, 0.01),
-        aspect_ratio=:equal, xlabel="Bell width", ylabel="Bell height", dpi=200, size=(1200, 600))
-    plot!(cps[1, :], cps[2, :], marker=:circle, linestyle=:dash, label="", color=:black, alpha=0.5, lw=2)
-end
-gif(anim, "outputs/plot_03_animatedBellShape.gif", fps=15)
-=#
-
-# TODO compare with parametric bodies
-#=
-
-    # define a flat plat at and angle of attack
-    cps = SA[-1   0   1
-            0.5 0.25 0]*L .+ [2L,3L]
-
-    # needed if control points are moved
-    cps_m = MMatrix(cps)
-    # weights = SA[1.,1.,1.]
-    # knots =   SA[0,0,0,1,1,1.]
-
-    # make a nurbs curve
-    # circle = NurbsCurve(cps_m,knots,weights)
-    circle = BSplineCurve(cps_m;degree=2)
-=#

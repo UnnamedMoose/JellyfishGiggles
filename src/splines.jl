@@ -93,15 +93,15 @@ function getSegmentPosition(iSeg, tTarget, cps; NiterMax=100, tol=1e-6, printout
     return y
 end
 
-function shapeForTime(t; mirror=false, evaluate=true, s=0:0.01:1)
+function shapeForTime(t, kinematicsArr; mirror=false, evaluate=true, s=0:0.01:1)
     # Get parameter values for this point in the cycle.
     seg_theta = []
     seg_length = []
     seg_thickness = []
-    for iSeg in 1:size(cps_thetas, 1)-1
-        push!(seg_theta, getSegmentPosition(iSeg, t, cps_thetas))
-        push!(seg_length, getSegmentPosition(iSeg, t, cps_lengths))
-        push!(seg_thickness, getSegmentPosition(iSeg, t, cps_halfThicknesses))
+    for iSeg in 1:size(kinematicsArr.cps_thetas, 1)-1
+        push!(seg_theta, getSegmentPosition(iSeg, t, kinematicsArr.cps_thetas))
+        push!(seg_length, getSegmentPosition(iSeg, t, kinematicsArr.cps_lengths))
+        push!(seg_thickness, getSegmentPosition(iSeg, t, kinematicsArr.cps_halfThicknesses))
             # old_evaluate_spline(hcat([tSplineCps, cps_thetas[i, :]]...)', [t])[2])
     end
 
