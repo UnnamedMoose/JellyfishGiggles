@@ -1,8 +1,12 @@
 using WaterLily
-using Plots; gr()
+#using GLMakie
+#GLMakie.activate!()
+using Plots#; gr()
 using StaticArrays
-include("/home/alidtke/git/WaterLily.jl/examples/TwoD_plots.jl")
-include("./src/diagnostics.jl")
+using ParametricBodies
+
+#include("/home/alidtke/git/WaterLily.jl/examples/TwoD_plots.jl")
+#include("./src/diagnostics.jl")
 
 function fig(store)
     store_matrix = reduce(vcat,store')
@@ -29,8 +33,8 @@ let
     L = 2^5
     Λ = 2.0
     radius, center = L/2, SA[2L,L]
-    duration = 50.0
-    step = 0.1
+    duration = 10.0
+    step = 0.2
     Fn = 0.5
 
     # fsi parameters
@@ -64,7 +68,8 @@ let
     t₀ = round(sim_time(sim)); 
     global store=[]
 
-    @time @gif for tᵢ in range(t₀,t₀+duration;step)
+    anim = @animate for tᵢ in range(t₀, t₀+duration; step=step)
+#    @time @gif for tᵢ in range(t₀,t₀+duration;step)
 #    @time for tᵢ in range(t₀,t₀+duration;step)
 
         # update
@@ -78,8 +83,10 @@ let
             mom_step!(sim.flow,sim.pois);
             
             # pressure force
+            force = -WaterLily.∮nds(sim.flow.p, sim.flow.f, sim.body, t)
+            moment = 0.0
             # force = -WaterLily.∮nds(sim.flow.p,sim.flow.f,circle,t)
-            force,moment = diagnostics(sim,center)
+            #force,moment = diagnostics(sim,center)
 
             # compute motion and acceleration 1DOF
             Δt = sim.flow.Δt[end]
@@ -93,8 +100,8 @@ let
             ω += Δt*dω; dω₀ = dω
             # @show dω ω rot
 
-            # save position, velocity, etc
-            push!(store,[Δt,accel...,pos...,vel...])
+            # save dt, t, position, velocity, acceleration
+            push!(store,[Δt, t, pos..., vel..., accel...])
             
             # update time, must be done globaly to set the pos/vel correctly
             t_init = t; t += Δt
@@ -102,13 +109,29 @@ let
 
         # plot vorticity
         @inside sim.flow.σ[I] = WaterLily.curl(3,I,sim.flow.u)*sim.L/sim.U
-        flood(sim.flow.σ;clims=(-10,10)); body_plot!(sim)
+#        flood(sim.flow.σ;clims=(-10,10)); body_plot!(sim)
+        contourf(clamp.(sim.flow.σ, -10, 10)',
+             color=palette(:RdBu_11), clims=(-10, 10), linewidth=0,
+             aspect_ratio=:equal, legend=false, border=:none)
+        #plot!(sim.body.surf)
+        
+        WaterLily.measure_sdf!(sim.flow.σ,sim.body,WaterLily.time(sim))
+        contour!(sim.flow.σ[inside(sim.flow.p)]'|>Array;levels=[0],lines=:black)
+    
         plot!([center[1]],[center[2]],marker=:o,color=:red,legend=:none)
 
         # print time step
         println("tU/L=",round(tᵢ,digits=4),", Δt=",round(sim.flow.Δt[end],digits=3))
     end
+
+    gif(anim, "outputs/plot_05_test_motion_ellipse.gif", fps=10)
 end
 
-#fig(store)
+# Convert to a column matrix for plotting
+store = hcat(store...)'
+
+plot(store[:, 2], store[:, 3], label="x", xlabel="Time", ylabel="Position")
+plot!(store[:, 2], store[:, 4], label="y")
+savefig("outputs/plot_06_test_motion_ellipse_pos.png")
+
 
