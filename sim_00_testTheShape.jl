@@ -51,7 +51,7 @@ hcat([
 ]...));
 
 # parameters
-function dynamicSpline(;L=2^6, Re=100, U=1, ϵ=0.5, thk=2ϵ+√2, mem=Array)
+function dynamicSpline(;L=2^5, Re=100, U=1, ϵ=0.5, thk=2ϵ+√2, mem=Array)
     # Create the initial shape.    
     cps = shapeForTime(0.0, evaluate=false, mirror=true)
     # Position and scale.
@@ -62,16 +62,30 @@ function dynamicSpline(;L=2^6, Re=100, U=1, ϵ=0.5, thk=2ϵ+√2, mem=Array)
     
     # Create a spline object
     spl = BSplineCurve(cps_m; degree=2)
+    
+    # Create a nurbs object.
+    #weights = SMatrix{1, 23}(zeros(23)')
+    #knots = SMatrix{1, 27}(vcat([[0., 0.], range(0, 1, 23), [1., 1.]]...)')
+    #spl = NurbsCurve(cps_m, knots, weights)
 
     # use BDIM-σ distance function, make a body and a Simulation
-    dist(p, n) = √(p'*p)-thk/2
-    body = DynamicBody(spl, (0, 1); dist, mem)
+    # This is for a fillament.
+    #dist(p, n) = √(p'*p)-thk/2
+    #body = DynamicBody(spl, (0, 1); dist, mem)
+    # This is for a closed body.
+    body = DynamicBody(spl, (0, 1); mem)
+    
+    # Set up a sim.
     Simulation((8L, 6L), (U, 0), L; U, ν=U*L/Re, body, T=Float64, mem)
 end
 
+# Redefie a function because Marin told me to do so. This should fix issues
+# at the ends of the spline.
+ParametricBodies.notC¹(l::NurbsLocator, uv) = false
+
 # intialize
 sim = dynamicSpline()#mem=CuArray);
-t₀, duration, tstep = sim_time(sim), 0.1, 0.0125;
+t₀, duration, tstep = sim_time(sim), 3., 0.025;
 
 # run
 anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
@@ -89,17 +103,20 @@ anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
         t += sim.flow.Δt[end]
     end
 
+    # Compute the forces.
+    pforce(surf::NurbsCurve, p::AbstractArray{T}; N=64) where T = integrate(s->PForce(sim.body.surf, sim.flow.p, s), sim.body.surf; N)
+#    vforce(surf::NurbsCurve, u::AbstractArray{T}; N=64) where T = integrate(s->VForce(sim.body.surf, sim.flow.u, s), sim.body.surf; N)
+
     # Flow plot
-         
     @inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L / sim.U
     
-    contourf(clamp.(sim.flow.σ, -10, 10)', dpi=300, xlims=(1*sim.L, 4*sim.L), ylims=(2*sim.L, 4*sim.L),
+    contourf(clamp.(sim.flow.σ, -10, 10)', dpi=300, xlims=(1.5*sim.L, 3.5*sim.L), ylims=(2*sim.L, 4*sim.L),
              color=palette(:RdBu_11), clims=(-10, 10), linewidth=0,
              aspect_ratio=:equal, legend=false, border=:none)
     plot!(sim.body.surf; add_cp=true)
     
     measure_sdf!(sim.flow.σ, sim.body, WaterLily.time(sim))
-    contour!(sim.flow.σ, levels=[-0.5, 0, 0.5], color=:black, linewidth=0.5, legend=false)
+    contour!(sim.flow.σ', levels=[0], color=:magenta, linewidth=2, legend=false)
 
     # print time step
     println("tU/L=", round(tᵢ, digits=4), ", ΔtU/L=", round(sim.flow.Δt[end]/sim.L*sim.U, digits=3))

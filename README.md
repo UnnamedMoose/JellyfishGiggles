@@ -28,12 +28,12 @@ x update CPs and kinematics to match Python, they have been improved
     - add profile area computation and smoothing to make sure the jellyfish is
         volume-conserving
     | move the code from the notebook to the src
-
-- run a simple simulation with no flow to check the kinematics and SDF; start with using
+| run a simple simulation with no flow to check the kinematics and SDF; start with using
     just the centreline and fixed thickness
-- add the flow and run that
+| add the flow and run that
+| add proper filled 2D profile
+
 - make sure the code can run on the GPU node
-- add proper filled 2D profile
 - add B-S BC (ask Marin for help)
 - add 1D motion with MRF (ask Marin for help)
 - make the SDF axisymmetric in 3D for validation

@@ -125,7 +125,8 @@ function shapeForTime(t; mirror=false, evaluate=true, s=0:0.01:1)
 
     cps = hcat(cps_u, reverse(cps_l, dims=2))
     if mirror
-        cps = hcat(cps, reverse(cps[:, 1:end-1].*[-1.0, 1.0], dims=2))
+        # also reverse order to match WaterLily/ParametricBodies inside/outside convention.
+        cps = reverse(hcat(cps, reverse(cps[:, 1:end-1].*[-1.0, 1.0], dims=2)), dims=2)
     end
     
     if evaluate
