@@ -16,6 +16,8 @@ import scipy.interpolate
 import matplotlib.animation as animation
 import scipy.optimize
 
+import utils
+
 font = {"family": "serif",
         "weight": "normal",
         "size": 16}
@@ -55,40 +57,6 @@ def niceFig(xlab=None, ylab=None, figsize=None):
 # def bellThickness(s):
 #     return 0.24 * (np.cos(np.abs(s)*np.pi/2.))**0.65
 
-# %% B-spline
-
-
-def CoxDeBoor(knots, u, k, d, count):
-    if (d == 0):
-        return int((knots[k] <= u and u < knots[k+1]) or ((u >= (1.0-1e-12)) and (k == (count-1))))
-    return ((u-knots[k]) / max(1e-12, knots[k+d] - knots[k])) * CoxDeBoor(knots, u, k, (d-1), count) \
-        + ((knots[k+d+1]-u) / max(1e-12, knots[k+d+1] - knots[k+1])) * CoxDeBoor(knots, u, (k+1), (d-1), count)
-
-
-def bspline(cv, s, d=3):
-    count = len(cv)
-    knots = np.array([0]*d + list(range(count-d+1)) + [count-d]*d, dtype='float') / (count-d)
-    pt = np.zeros(cv.shape[1])
-    for k in range(count):
-        pt += CoxDeBoor(knots, s, k, d, count) * cv[k]
-    return pt
-
-
-
-# %% Misc
-
-
-# Implementation of Shoelace formula
-def polyArea(x, y):
-    return 0.5*np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-
-
-# Rotate a point around a different point
-def rotatePoint(pt, x0, theta):
-    x = pt - x0
-    xr = x[0]*np.cos(theta) - x[1]*np.sin(theta)
-    yr = x[1]*np.cos(theta) + x[0]*np.sin(theta)
-    return np.array([xr, yr]) + x0
 
 
 # %% Fit a b-spline to data of the undeformedshape
@@ -159,7 +127,7 @@ cps = np.array([
     [0.389, -0.52]
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
-pu = np.array([bspline(cps, u, d=2) for u in s])
+pu = np.array([utils.bspline(cps, u, d=2) for u in s])
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[0])
 
 # 1st cycle lower
@@ -170,12 +138,12 @@ cps = np.array([
     [0.389, -0.52]
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
-pl = np.array([bspline(cps, u, d=2) for u in s])
+pl = np.array([utils.bspline(cps, u, d=2) for u in s])
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[0])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
 regressedShapes.append(xy)
-area = polyArea(xy[:, 0], xy[:, 1])
+area = utils.polyArea(xy[:, 0], xy[:, 1])
 ax.text(0, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
 np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot1.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
 
@@ -191,7 +159,7 @@ cps = np.array([
     [0.9, -0.48]
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
-pu = np.array([bspline(cps, u, d=2) for u in s])
+pu = np.array([utils.bspline(cps, u, d=2) for u in s])
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[1])
 
 # 2nd cycle lower
@@ -205,12 +173,12 @@ cps = np.array([
     [0.9, -0.48]
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
-pl = np.array([bspline(cps, u, d=2) for u in s])
+pl = np.array([utils.bspline(cps, u, d=2) for u in s])
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[1])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
 regressedShapes.append(xy)
-area = polyArea(xy[:, 0], xy[:, 1])
+area = utils.polyArea(xy[:, 0], xy[:, 1])
 ax.text(0.5, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
 np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot2.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
 
@@ -222,7 +190,7 @@ cps = np.array([
     [1.27, -0.66],
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
-pu = np.array([bspline(cps, u, d=2) for u in s])
+pu = np.array([utils.bspline(cps, u, d=2) for u in s])
 ax.plot(pu[:, 0], pu[:, 1], "-", lw=2, c=colours[2])
 
 # 3rd cycle lower
@@ -233,12 +201,12 @@ cps = np.array([
     [1.27, -0.66],
 ])
 # ax.plot(cps[:, 0], cps[:, 1], "o--", c="orange", ms=7)
-pl = np.array([bspline(cps, u, d=2) for u in s])
+pl = np.array([utils.bspline(cps, u, d=2) for u in s])
 ax.plot(pl[:, 0], pl[:, 1], "-", lw=2, c=colours[2])
 
 xy = np.vstack([pu, np.flipud(pl[:-1, :])])
 regressedShapes.append(xy)
-area = polyArea(xy[:, 0], xy[:, 1])
+area = utils.polyArea(xy[:, 0], xy[:, 1])
 ax.text(1., 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
 np.savetxt("dataset_01_medusae/shape_Costello2020_snapshot3.txt", np.hstack([xy, np.zeros((xy.shape[0], 1))]))
 
@@ -249,71 +217,6 @@ plt.show()
 # %% Figure out a way to describe each profile using the same set of control points.
 # This also has to be done using a single, continuous curve in a way that preserves volume.
 
-def profileFromParams(length, halfThickness, theta, s=np.linspace(0, 1, 101),
-                      ax=None, dxPlot=0, colour="b"):
-    """
-    Creates a jellyfish profile from a set of segment lengths, thicknesses and rotation angles.
-    Can also provide additional parameters to plot the profile on an external figure.
-
-    Parameters
-    ----------
-    length : TYPE
-        DESCRIPTION.
-    halfThickness : TYPE
-        DESCRIPTION.
-    theta : TYPE
-        DESCRIPTION.
-    s : TYPE, optional
-        DESCRIPTION. The default is np.linspace(0, 1, 101).
-    ax : TYPE, optional
-        DESCRIPTION. The default is None.
-    dxPlot : TYPE, optional
-        DESCRIPTION. The default is 0.
-    colour : TYPE, optional
-        DESCRIPTION. The default is "b".
-
-    Returns
-    -------
-    xy : TYPE
-        DESCRIPTION.
-    cps : TYPE
-        DESCRIPTION.
-    area : TYPE
-        DESCRIPTION.
-
-    """
-    cps_u, cps_l = [], []
-
-    xLast = np.array([-length[0]/2., -halfThickness[0]])
-    for i in range(len(halfThickness)):
-        xNew = xLast + [length[i], 0.]
-        xNew = rotatePoint(xNew, xLast, -theta[i])
-        xMid = (xLast + xNew) / 2.
-        vTan = (xNew - xLast) / np.linalg.norm(xNew - xLast)
-        vPer = np.array([-vTan[1], vTan[0]])
-
-        p0 = xMid + halfThickness[i]*vPer
-        p1 = xMid - halfThickness[i]*vPer
-        cps_u.append(p0)
-        cps_l.append(p1)
-
-        if ax is not None:
-            ax.plot([xLast[0]+dxPlot, xNew[0]+dxPlot], [xLast[1], xNew[1]], "ko-", lw=4, alpha=0.25)
-            ax.plot(xMid[0]+dxPlot, xMid[1], "rs")
-            ax.plot([p0[0]+dxPlot, p1[0]+dxPlot], [p0[1], p1[1]], "r--")
-
-        xLast = xNew
-
-    cps = np.vstack([cps_u, np.flipud(cps_l)])
-    xy = np.array([bspline(cps, u, d=2) for u in s])
-    area = polyArea(xy[:, 0], xy[:, 1])
-
-    if ax is not None:
-        ax.plot(cps[:, 0]+dxPlot, cps[:, 1], "ro")
-        ax.plot(xy[:, 0]+dxPlot, xy[:, 1], lw=2, c=colour)
-        ax.text(dxPlot, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
-
-    return xy, cps, area
 
 
 halfThicknesses = np.array([
@@ -377,7 +280,7 @@ for i in range(4):
 
 # Create the backbone and control points.
 for j in range(3):
-    xy, cps, area = profileFromParams(lengths[:, j], halfThicknesses[:, j], thetas[:, j],
+    xy, cps, area = utils.profileFromParams(lengths[:, j], halfThicknesses[:, j], thetas[:, j],
                                       s=np.linspace(0, 1, 101), ax=ax, dxPlot=0.5*j, colour=colours[j])
 
 plt.savefig("./outputs/bellShapeEvolution_Costello2020_kinematicsModel.png", dpi=200, bbox_inches="tight")
@@ -488,7 +391,7 @@ for i, t in enumerate([0, 0.13, 0.27]):
     # thkFit += (res.x[0]-0.5)/0.5*0.01
 
     # Compute the profile.
-    xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
+    xy, cps, area = utils.profileFromParams(Lfit, thkFit, thetaFit)
 
     # Save
     np.savetxt("dataset_01_medusae/smoothShapeCps_Costello2020_snapshot{:d}.txt".format(i), cps)
@@ -505,7 +408,7 @@ plt.show()
 
 def thicknessTarget(x, Lfit, thkFit, thetaFit):
     dt = (x-0.5)/0.5*0.01
-    xy1, cps1, area1 = profileFromParams(Lfit, thkFit+dt, thetaFit)
+    xy1, cps1, area1 = utils.profileFromParams(Lfit, thkFit+dt, thetaFit)
     return abs(area1 - 0.0671)
 
 
@@ -574,7 +477,7 @@ class JellyfishPlot(object):
         thkFit += (res.x[0]-0.5)/0.5*0.01
 
         # Compute the profile.
-        xy, cps, area = profileFromParams(Lfit, thkFit, thetaFit)
+        xy, cps, area = utils.profileFromParams(Lfit, thkFit, thetaFit)
 
         # Plot.
         self.plotObjects = self.ax.plot(xy[:, 0], xy[:, 1], c="r", lw=2)
