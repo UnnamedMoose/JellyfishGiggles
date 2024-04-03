@@ -76,7 +76,7 @@ def getSegmentPosition(iSeg, tTarget, cps, NiterMax=100, tol=1e-6, printout=Fals
 
 # Generation of motion.
 def profileFromParams(length, halfThickness, theta, s=np.linspace(0, 1, 101),
-                      ax=None, dxPlot=0, colour="b"):
+                      ax=None, dxPlot=0, scalePlot=1., colour="b"):
     """
     Creates a jellyfish profile from a set of segment lengths, thicknesses and rotation angles.
     Can also provide additional parameters to plot the profile on an external figure.
@@ -124,9 +124,11 @@ def profileFromParams(length, halfThickness, theta, s=np.linspace(0, 1, 101),
         cps_l.append(p1)
 
         if ax is not None:
-            ax.plot([xLast[0]+dxPlot, xNew[0]+dxPlot], [xLast[1], xNew[1]], "ko-", lw=4, alpha=0.25)
-            ax.plot(xMid[0]+dxPlot, xMid[1], "rs")
-            ax.plot([p0[0]+dxPlot, p1[0]+dxPlot], [p0[1], p1[1]], "r--")
+            ax.plot([xLast[0]*scalePlot+dxPlot*scalePlot, xNew[0]*scalePlot+dxPlot*scalePlot],
+                    [xLast[1]*scalePlot, xNew[1]*scalePlot], "ko-", lw=4, alpha=0.25)
+            ax.plot(xMid[0]*scalePlot+dxPlot*scalePlot, xMid[1]*scalePlot, "rs")
+            ax.plot([p0[0]*scalePlot+dxPlot*scalePlot, p1[0]*scalePlot+dxPlot*scalePlot],
+                    [p0[1]*scalePlot, p1[1]*scalePlot], "r--")
 
         xLast = xNew
 
@@ -135,8 +137,9 @@ def profileFromParams(length, halfThickness, theta, s=np.linspace(0, 1, 101),
     area = polyArea(xy[:, 0], xy[:, 1])
 
     if ax is not None:
-        ax.plot(cps[:, 0]+dxPlot, cps[:, 1], "ro")
-        ax.plot(xy[:, 0]+dxPlot, xy[:, 1], lw=2, c=colour)
-        ax.text(dxPlot, 0.05, "A={:.4f} units$^2$".format(area), va="bottom", ha="left")
+        ax.plot(cps[:, 0]*scalePlot+dxPlot*scalePlot, cps[:, 1]*scalePlot, "ro")
+        ax.plot(xy[:, 0]*scalePlot+dxPlot*scalePlot, xy[:, 1]*scalePlot, lw=2, c=colour)
+        ax.text(dxPlot*scalePlot, 0.05*scalePlot, "A={:.4f} units$^2$".format(area*scalePlot**2.),
+                va="bottom", ha="left")
 
     return xy, cps, area
