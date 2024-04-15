@@ -3,37 +3,52 @@ using ParametricBodies
 using StaticArrays
 using Plots
 using CUDA
+using DelimitedFiles
+using ReadVTK, WriteVTK
 
 include("./src/splines.jl")
 include("./src/kinematics.jl")
 
-# parameters
-function dynamicSpline(;L=2^5, Re=100, U=1, ϵ=0.5, thk=2ϵ+√2, mem=Array)
+caseId = "baseline"
+kinematics_arr = kinematics_0_baseline
+
+#caseId = "noFlick"
+#kinematics_arr = kinematics_1_noFlick
+
+#caseId = "largeFlick"
+#kinematics_arr = kinematics_2_largeFlick
+
+ReynoldsNumber = 500.
+maxTipVel = 3.5  # From kinematics for the "Large flick" case
+L = 128
+Uinf = 1.0
+period = maxTipVel*L/Uinf
+
+tstep = 0.0025*period
+duration = 2*period
+centre = [1.5, 1.5]*L
+
+#function map(x, t)
+#    SA[1. 0.; 0. 1]*(x-centre)
+#end
+
+function dynamicSpline(;Re=500, U=1, mem=Array)
     # Create the initial shape.    
-    cps = shapeForTime(0.0, kinematics_0_baseline, evaluate=false, mirror=true)
+    cps = shapeForTime(0.0, kinematics_arr, evaluate=false, mirror=true)
     # Position and scale.
-    cps = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.] .+ [2,3]) * L
+    cps = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.]) * L .+ centre
 
     # needed if control points are moved
     cps_m = MMatrix(cps)
     
     # Create a spline object
     spl = BSplineCurve(cps_m; degree=2)
-    
-    # Create a nurbs object.
-    #weights = SMatrix{1, 23}(zeros(23)')
-    #knots = SMatrix{1, 27}(vcat([[0., 0.], range(0, 1, 23), [1., 1.]]...)')
-    #spl = NurbsCurve(cps_m, knots, weights)
 
     # use BDIM-σ distance function, make a body and a Simulation
-    # This is for a fillament.
-    #dist(p, n) = √(p'*p)-thk/2
-    #body = DynamicBody(spl, (0, 1); dist, mem)
-    # This is for a closed body.
     body = DynamicBody(spl, (0, 1); mem)
     
     # Set up a sim.
-    Simulation((8L, 6L), (U, 0), L; U, ν=U*L/Re, body, T=Float64, mem)
+    Simulation((4L, 3L), (0, 0), L; U, ν=U*L/Re, body, T=Float64, mem)
 end
 
 # Redefie a function because Marin told me to do so. This should fix issues
@@ -41,41 +56,79 @@ end
 ParametricBodies.notC¹(l::NurbsLocator, uv) = false
 
 # intialize
-sim = dynamicSpline()#mem=CuArray);
-t₀, duration, tstep = sim_time(sim), 0.3, 0.025;
+sim = dynamicSpline(Re=ReynoldsNumber, U=Uinf)
+t₀ = sim_time(sim)
+
+# Keeps time series data
+global timeHistory = []
+
+# make a writer with some attributes, need to output to CPU array to save file (|> Array)
+velocity(sim::Simulation) = sim.flow.u |> Array;
+pressure(sim::Simulation) = sim.flow.p |> Array;
+_body(sim::Simulation) = (measure_sdf!(sim.flow.σ, sim.body, WaterLily.time(sim)); sim.flow.σ |> Array;)
+
+custom_attrib = Dict(
+    "Velocity" => velocity,
+    "Pressure" => pressure,
+    "Body" => _body
+)
+
+wr = vtkWriter("flowDataFile_" * caseId; attrib=custom_attrib)
 
 # run
-anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
+for tᵢ in range(t₀, t₀+duration; step=tstep)
+#anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
 
     # update until time tᵢ in the background
     t = sum(sim.flow.Δt[1:end-1])
     
-    while t < tᵢ*sim.L/sim.U
-        cps = shapeForTime(tᵢ % 1.0, kinematics_0_baseline, evaluate=false, mirror=true)
-        new_pnts = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.] .+ [2,3]) * sim.L
+    while t < tᵢ
+        cps = shapeForTime(tᵢ/period % 1.0, kinematics_arr, evaluate=false, mirror=true)
+        new_pnts = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.]) * sim.L .+ centre
         
         ParametricBodies.update!(sim.body, new_pnts, sim.flow.Δt[end])
         measure!(sim, t)
         mom_step!(sim.flow, sim.pois)
+        
         t += sim.flow.Δt[end]
     end
-
+    
+    # Grab forces and store them.
+    fTot = -WaterLily.∮nds(sim.flow.p, sim.flow.f, sim.body, t)
+    push!(timeHistory, [sim.flow.Δt[end], t, fTot...])
+    
+    # Save to vtk.
+    write!(wr, sim)
+#=
     # Flow plot
     @inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L / sim.U
     
-    contourf(clamp.(sim.flow.σ, -10, 10)', dpi=300, xlims=(1.5*sim.L, 3.5*sim.L),# .- 1.,
-            ylims=(2*sim.L, 4*sim.L),# .- 1,
+    contourf(clamp.(sim.flow.σ, -10, 10)', dpi=300, xlims=(centre[1]-0.25*sim.L, centre[1]+1.25*sim.L),
+            ylims=(centre[2]-0.75*sim.L, centre[2]+0.75*sim.L),
             color=palette(:RdBu_11), clims=(-10, 10), linewidth=0,
             aspect_ratio=:equal, legend=false, border=:none)
-    #plot!(sim.body.surf; add_cp=true)
     
+    # Body plot.
     measure_sdf!(sim.flow.σ, sim.body, WaterLily.time(sim))
     contour!(sim.flow.σ', levels=[0], color=:magenta, linewidth=2, legend=false, show=true)
-
+=#
     # print time step
-    println("tU/L=", round(tᵢ, digits=4), ", ΔtU/L=", round(sim.flow.Δt[end]/sim.L*sim.U, digits=3))
+    println("t/T=", round(tᵢ/period, digits=4), ", Δt/T=", round(sim.flow.Δt[end]/period, digits=3))
 end
 
+#=
 # save gif
-gif(anim, "outputs/plot_04_test_DynamicBody_flow_sdf.gif", fps=10)
+gif(anim, "outputs/plot_07_test_MovingDynamicBody_flow_sdf_" * caseId * "_Re_$ReynoldsNumber.gif", fps=10)
+
+# Plot the force
+plot(timeHistory[:, 2], timeHistory[:, 3], legend=false, xlabel="Time", ylabel="Propulsive force")
+savefig("outputs/plot_08_test_MovingDynamicBody_force_" * caseId * "_Re_$ReynoldsNumber.png")
+=#
+
+# Convert to a column matrix for plotting and saving.
+timeHistory = hcat(timeHistory...)'
+writedlm("outputs/timeHistory_" * caseId * "_Re_$ReynoldsNumber.csv", timeHistory, ',')
+
+# Clean up the VTK writer.
+close(wr)
 
