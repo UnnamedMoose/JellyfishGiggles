@@ -1,22 +1,32 @@
 using WaterLily
 using ParametricBodies
 using StaticArrays
-using Plots
-using CUDA
+using Plots; ENV["GKSwstype"]="nul"
+#using CUDA
 using DelimitedFiles
 using ReadVTK, WriteVTK
 
 include("./src/splines.jl")
 include("./src/kinematics.jl")
 
-caseId = "baseline"
-kinematics_arr = kinematics_0_baseline
+#=
+TODO
+
+I would check your typical time step and then set up a diagnostic over t=0:dt:T.
+Then update the geometry at time t and measure the SDF and velocity fields over the grid.
+Then look for the extrema in the velocity and in the change in SDF between time steps.
+Plot those as a function of t and look for any jumps
+
+=#
+
+#caseId = "baseline"
+#kinematics_arr = kinematics_0_baseline
 
 #caseId = "noFlick"
 #kinematics_arr = kinematics_1_noFlick
 
-#caseId = "largeFlick"
-#kinematics_arr = kinematics_2_largeFlick
+caseId = "largeFlick"
+kinematics_arr = kinematics_2_largeFlick
 
 ReynoldsNumber = 500.
 maxTipVel = 3.5  # From kinematics for the "Large flick" case
@@ -24,7 +34,7 @@ L = 128
 Uinf = 1.0
 period = maxTipVel*L/Uinf
 
-tstep = 0.0025*period
+tstep = 0.01*period
 duration = 2*period
 centre = [1.5, 1.5]*L
 
@@ -75,15 +85,16 @@ custom_attrib = Dict(
 
 wr = vtkWriter("flowDataFile_" * caseId; attrib=custom_attrib)
 
-# run
-for tᵢ in range(t₀, t₀+duration; step=tstep)
-#anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
+# ===
+#for tᵢ in range(t₀, t₀+duration; step=tstep)
+anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
+# ===
 
     # update until time tᵢ in the background
     t = sum(sim.flow.Δt[1:end-1])
     
     while t < tᵢ
-        cps = shapeForTime(tᵢ/period % 1.0, kinematics_arr, evaluate=false, mirror=true)
+        cps = shapeForTime(t/period % 1.0, kinematics_arr, evaluate=false, mirror=true)
         new_pnts = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.]) * sim.L .+ centre
         
         ParametricBodies.update!(sim.body, new_pnts, sim.flow.Δt[end])
@@ -99,7 +110,9 @@ for tᵢ in range(t₀, t₀+duration; step=tstep)
     
     # Save to vtk.
     write!(wr, sim)
-#=
+
+# ===
+
     # Flow plot
     @inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L / sim.U
     
@@ -111,23 +124,30 @@ for tᵢ in range(t₀, t₀+duration; step=tstep)
     # Body plot.
     measure_sdf!(sim.flow.σ, sim.body, WaterLily.time(sim))
     contour!(sim.flow.σ', levels=[0], color=:magenta, linewidth=2, legend=false, show=true)
-=#
+
+# ===
+
     # print time step
-    println("t/T=", round(tᵢ/period, digits=4), ", Δt/T=", round(sim.flow.Δt[end]/period, digits=3))
+    println("t/T=", round(tᵢ/period, digits=4), ", Δt/T=", round(sim.flow.Δt[end]/period, digits=6))
+    
+    # Flush them outputs.
+    flush(stdout)
 end
 
-#=
+# Convert to a column matrix for plotting and saving.
+timeHistory = hcat(timeHistory...)'
+writedlm("outputs/timeHistory_" * caseId * "_Re_$ReynoldsNumber.csv", timeHistory, ',')
+
+# ===
+
 # save gif
 gif(anim, "outputs/plot_07_test_MovingDynamicBody_flow_sdf_" * caseId * "_Re_$ReynoldsNumber.gif", fps=10)
 
 # Plot the force
 plot(timeHistory[:, 2], timeHistory[:, 3], legend=false, xlabel="Time", ylabel="Propulsive force")
 savefig("outputs/plot_08_test_MovingDynamicBody_force_" * caseId * "_Re_$ReynoldsNumber.png")
-=#
 
-# Convert to a column matrix for plotting and saving.
-timeHistory = hcat(timeHistory...)'
-writedlm("outputs/timeHistory_" * caseId * "_Re_$ReynoldsNumber.csv", timeHistory, ',')
+# ===
 
 # Clean up the VTK writer.
 close(wr)
