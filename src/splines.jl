@@ -10,7 +10,7 @@ using CUDA
 
 using ParametricBodies
 
-function pbSpline(cps, s; deg=2)
+function pbSpline(cps, s; deg=3)
     """ Handy wrapper around ParametricBodies.jl spline class. """
     cps_m = MMatrix(SArray{Tuple{2, size(cps[1,:])[1]}}(cps))
     curve = BSplineCurve(cps_m; degree=deg)
@@ -110,9 +110,10 @@ function shapeForTime(t, kinematicsArr; mirror=false, evaluate=true, s=0:0.01:1)
     cps_l = zeros(2, size(seg_length, 1))
 
     xLast = [-seg_length[1]/2, -seg_thickness[1]]
-
+    backbone = [xLast]
     for i in 1:length(seg_thickness)
         xNew = rotatePoint(xLast + [seg_length[i], 0], xLast, -seg_theta[i])
+        push!(backbone, xNew)
         xMid = (xLast + xNew) / 2.0
         vTan = (xNew - xLast) / norm(xNew - xLast)
         vPer = [-vTan[2], vTan[1]]
@@ -132,7 +133,7 @@ function shapeForTime(t, kinematicsArr; mirror=false, evaluate=true, s=0:0.01:1)
     if evaluate
         #xy = old_evaluate_spline(cps, s)
         xy = pbSpline(cps, s)
-        return xy, cps, hcat([seg_length, seg_thickness, seg_theta]...)
+        return xy, cps, hcat([seg_length, seg_thickness, seg_theta]...), hcat(backbone...)
     else
         return cps
     end

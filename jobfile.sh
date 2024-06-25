@@ -9,4 +9,4 @@
 
 source /etc/profile.d/modules.sh
 
-julia --threads 28 sim_02_movingJelly.jl
+julia --threads 28 sim_01_movingJelly_differentKinematics_static.jl
