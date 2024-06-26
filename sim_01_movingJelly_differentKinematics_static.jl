@@ -1,40 +1,30 @@
 using WaterLily
 using ParametricBodies
+using BiotSavartBCs
 using StaticArrays
 using Plots; ENV["GKSwstype"]="nul"
-#using CUDA
 using DelimitedFiles
 using ReadVTK, WriteVTK
 
 include("./src/splines.jl")
 include("./src/kinematics.jl")
 
-#=
-TODO
-
-I would check your typical time step and then set up a diagnostic over t=0:dt:T.
-Then update the geometry at time t and measure the SDF and velocity fields over the grid.
-Then look for the extrema in the velocity and in the change in SDF between time steps.
-Plot those as a function of t and look for any jumps
-
-=#
-
-#caseId = "baseline"
-#kinematics_arr = kinematics_0_baseline
+caseId = "baseline"
+kinematics_arr = kinematics_0_baseline
 
 #caseId = "noFlick"
 #kinematics_arr = kinematics_1_noFlick
 
-caseId = "largeFlick"
-kinematics_arr = kinematics_2_largeFlick
+#caseId = "largeFlick"
+#kinematics_arr = kinematics_2_largeFlick
 
 ReynoldsNumber = 500.
 maxTipVel = 3.5  # From kinematics for the "Large flick" case
-L = 128
+L = 64
 Uinf = 1.0
 period = maxTipVel*L/Uinf
 
-tstep = 0.01*period
+tstep = 0.05*period
 duration = 2*period
 centre = [1.5, 1.5]*L
 
@@ -67,6 +57,8 @@ ParametricBodies.notC¹(l::NurbsLocator, uv) = false
 
 # intialize
 sim = dynamicSpline(Re=ReynoldsNumber, U=Uinf)
+using_biot_savart = true
+ω_ml = using_biot_savart ? MLArray(sim.flow.σ) : nothing
 t₀ = sim_time(sim)
 
 # Keeps time series data
@@ -99,13 +91,14 @@ anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
         
         ParametricBodies.update!(sim.body, new_pnts, sim.flow.Δt[end])
         measure!(sim, t)
-        mom_step!(sim.flow, sim.pois)
+        using_biot_savart ? biot_mom_step!(sim.flow, sim.pois, ω_ml) : mom_step!(sim.flow, sim.pois)
         
         t += sim.flow.Δt[end]
     end
     
     # Grab forces and store them.
-    fTot = -WaterLily.∮nds(sim.flow.p, sim.flow.f, sim.body, t)
+    # fTot = -WaterLily.∮nds(sim.flow.p, sim.flow.f, sim.body, t)
+    fTot = -ParametricBodies.∮nds(sim.flow.p, sim.body, t)
     push!(timeHistory, [sim.flow.Δt[end], t, fTot...])
     
     # Save to vtk.
@@ -141,11 +134,11 @@ writedlm("outputs/timeHistory_" * caseId * "_Re_$ReynoldsNumber.csv", timeHistor
 # ===
 
 # save gif
-gif(anim, "outputs/plot_07_test_MovingDynamicBody_flow_sdf_" * caseId * "_Re_$ReynoldsNumber.gif", fps=10)
+gif(anim, "outputs/plot_04_flow_sdf_" * caseId * "_Re_$ReynoldsNumber.gif", fps=10)
 
 # Plot the force
 plot(timeHistory[:, 2], timeHistory[:, 3], legend=false, xlabel="Time", ylabel="Propulsive force")
-savefig("outputs/plot_08_test_MovingDynamicBody_force_" * caseId * "_Re_$ReynoldsNumber.png")
+savefig("outputs/plot_04_force_" * caseId * "_Re_$ReynoldsNumber.png")
 
 # ===
 

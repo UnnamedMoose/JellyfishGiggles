@@ -9,4 +9,5 @@
 
 source /etc/profile.d/modules.sh
 
+export JULIA_NUM_THREADS=28
 julia --threads 28 sim_01_movingJelly_differentKinematics_static.jl

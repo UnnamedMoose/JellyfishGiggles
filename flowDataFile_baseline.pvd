@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VTKFile type="Collection" version="1.0" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+  <Collection>
+    <DataSet timestep="0.0" part="0" file="vtk_data/flowDataFile_baseline_000000.vti"/>
+    <DataSet timestep="0.1636" part="0" file="vtk_data/flowDataFile_baseline_000001.vti"/>
+    <DataSet timestep="0.3661" part="0" file="vtk_data/flowDataFile_baseline_000002.vti"/>
+    <DataSet timestep="0.5281" part="0" file="vtk_data/flowDataFile_baseline_000003.vti"/>
+    <DataSet timestep="0.7058" part="0" file="vtk_data/flowDataFile_baseline_000004.vti"/>
+    <DataSet timestep="0.8872" part="0" file="vtk_data/flowDataFile_baseline_000005.vti"/>
+    <DataSet timestep="1.0594" part="0" file="vtk_data/flowDataFile_baseline_000006.vti"/>
+    <DataSet timestep="1.2259" part="0" file="vtk_data/flowDataFile_baseline_000007.vti"/>
+    <DataSet timestep="1.4122" part="0" file="vtk_data/flowDataFile_baseline_000008.vti"/>
+    <DataSet timestep="1.5775" part="0" file="vtk_data/flowDataFile_baseline_000009.vti"/>
+    <DataSet timestep="1.7497" part="0" file="vtk_data/flowDataFile_baseline_000010.vti"/>
+    <DataSet timestep="1.9311" part="0" file="vtk_data/flowDataFile_baseline_000011.vti"/>
+    <DataSet timestep="2.1052" part="0" file="vtk_data/flowDataFile_baseline_000012.vti"/>
+    <DataSet timestep="2.2863" part="0" file="vtk_data/flowDataFile_baseline_000013.vti"/>
+    <DataSet timestep="2.4565" part="0" file="vtk_data/flowDataFile_baseline_000014.vti"/>
+    <DataSet timestep="2.6316" part="0" file="vtk_data/flowDataFile_baseline_000015.vti"/>
+    <DataSet timestep="2.8115" part="0" file="vtk_data/flowDataFile_baseline_000016.vti"/>
+    <DataSet timestep="2.9771" part="0" file="vtk_data/flowDataFile_baseline_000017.vti"/>
+    <DataSet timestep="3.1648" part="0" file="vtk_data/flowDataFile_baseline_000018.vti"/>
+    <DataSet timestep="3.337" part="0" file="vtk_data/flowDataFile_baseline_000019.vti"/>
+    <DataSet timestep="3.512" part="0" file="vtk_data/flowDataFile_baseline_000020.vti"/>
+    <DataSet timestep="3.6833" part="0" file="vtk_data/flowDataFile_baseline_000021.vti"/>
+    <DataSet timestep="3.8655" part="0" file="vtk_data/flowDataFile_baseline_000022.vti"/>
+    <DataSet timestep="4.0249" part="0" file="vtk_data/flowDataFile_baseline_000023.vti"/>
+    <DataSet timestep="4.2079" part="0" file="vtk_data/flowDataFile_baseline_000024.vti"/>
+    <DataSet timestep="4.3874" part="0" file="vtk_data/flowDataFile_baseline_000025.vti"/>
+    <DataSet timestep="4.5593" part="0" file="vtk_data/flowDataFile_baseline_000026.vti"/>
+    <DataSet timestep="4.7323" part="0" file="vtk_data/flowDataFile_baseline_000027.vti"/>
+    <DataSet timestep="4.9104" part="0" file="vtk_data/flowDataFile_baseline_000028.vti"/>
+    <DataSet timestep="5.0886" part="0" file="vtk_data/flowDataFile_baseline_000029.vti"/>
+    <DataSet timestep="5.2599" part="0" file="vtk_data/flowDataFile_baseline_000030.vti"/>
+    <DataSet timestep="5.4246" part="0" file="vtk_data/flowDataFile_baseline_000031.vti"/>
+    <DataSet timestep="5.6121" part="0" file="vtk_data/flowDataFile_baseline_000032.vti"/>
+    <DataSet timestep="5.7904" part="0" file="vtk_data/flowDataFile_baseline_000033.vti"/>
+    <DataSet timestep="5.9576" part="0" file="vtk_data/flowDataFile_baseline_000034.vti"/>
+    <DataSet timestep="6.1293" part="0" file="vtk_data/flowDataFile_baseline_000035.vti"/>
+    <DataSet timestep="6.3054" part="0" file="vtk_data/flowDataFile_baseline_000036.vti"/>
+    <DataSet timestep="6.4855" part="0" file="vtk_data/flowDataFile_baseline_000037.vti"/>
+    <DataSet timestep="6.6507" part="0" file="vtk_data/flowDataFile_baseline_000038.vti"/>
+    <DataSet timestep="6.8375" part="0" file="vtk_data/flowDataFile_baseline_000039.vti"/>
+  </Collection>
+</VTKFile>
