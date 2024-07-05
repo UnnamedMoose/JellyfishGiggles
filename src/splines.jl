@@ -98,12 +98,25 @@ function shapeForTime(t, kinematicsArr; mirror=false, evaluate=true, s=0:0.01:1)
     seg_theta = []
     seg_length = []
     seg_thickness = []
+
+    seg_theta_0 = []
+    seg_length_0 = []
+    seg_thickness_0 = []
+
     for iSeg in 1:size(kinematicsArr.cps_thetas, 1)-1
         push!(seg_theta, getSegmentPosition(iSeg, t, kinematicsArr.cps_thetas))
         push!(seg_length, getSegmentPosition(iSeg, t, kinematicsArr.cps_lengths))
         push!(seg_thickness, getSegmentPosition(iSeg, t, kinematicsArr.cps_halfThicknesses))
-            # old_evaluate_spline(hcat([tSplineCps, cps_thetas[i, :]]...)', [t])[2])
+
+        push!(seg_theta_0, getSegmentPosition(iSeg, 0.0, kinematicsArr.cps_thetas))
+        push!(seg_length_0, getSegmentPosition(iSeg, 0.0, kinematicsArr.cps_lengths))
+        push!(seg_thickness_0, getSegmentPosition(iSeg, 0.0, kinematicsArr.cps_halfThicknesses))
     end
+    
+    urFac = 0.5
+    seg_theta = (1.0 - urFac) .* seg_theta + urFac .* seg_theta_0
+    seg_length = (1.0 - urFac) .* seg_length + urFac .* seg_length_0
+    seg_thickness = (1.0 - urFac) .* seg_thickness + urFac .* seg_thickness_0
 
     # Construct the control points from the params.
     cps_u = zeros(2, size(seg_length, 1))

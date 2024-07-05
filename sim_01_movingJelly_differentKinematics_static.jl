@@ -5,9 +5,11 @@ using StaticArrays
 using Plots; ENV["GKSwstype"]="nul"
 using DelimitedFiles
 using ReadVTK, WriteVTK
+using LoggingExtras
 
 include("./src/splines.jl")
 include("./src/kinematics.jl")
+include("./src/tools.jl")
 
 caseId = "baseline"
 kinematics_arr = kinematics_0_baseline
@@ -15,17 +17,17 @@ kinematics_arr = kinematics_0_baseline
 #caseId = "noFlick"
 #kinematics_arr = kinematics_1_noFlick
 
-#caseId = "largeFlick"
+#caseId = "largeFlick_pTol_1e-2"
 #kinematics_arr = kinematics_2_largeFlick
 
 ReynoldsNumber = 500.
 maxTipVel = 3.5  # From kinematics for the "Large flick" case
-L = 64
+L = 32
 Uinf = 1.0
 period = maxTipVel*L/Uinf
 
-tstep = 0.05*period
-duration = 2*period
+tstep = 0.005*period
+duration = 2.0*period
 centre = [1.5, 1.5]*L
 
 #function map(x, t)
@@ -48,6 +50,7 @@ function dynamicSpline(;Re=500, U=1, mem=Array)
     body = DynamicBody(spl, (0, 1); mem)
     
     # Set up a sim.
+    # TODO
     Simulation((4L, 3L), (0, 0), L; U, ν=U*L/Re, body, T=Float64, mem)
 end
 
@@ -55,11 +58,19 @@ end
 # at the ends of the spline.
 ParametricBodies.notC¹(l::NurbsLocator, uv) = false
 
-# intialize
+# Set convergence tolerances.
+WaterLily.solver!(ml::MultiLevelPoisson) = WaterLily.solver!(ml; tol=1e-6, itmx=1024)
+
+# Intialize
 sim = dynamicSpline(Re=ReynoldsNumber, U=Uinf)
+t₀ = sim_time(sim)
+
+# Set Biot-Savart BC (or not)
 using_biot_savart = true
 ω_ml = using_biot_savart ? MLArray(sim.flow.σ) : nothing
-t₀ = sim_time(sim)
+
+# Allows logging the pressure solver results.
+WaterLily.logger("log_psolver")
 
 # Keeps time series data
 global timeHistory = []
@@ -90,6 +101,7 @@ anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
         new_pnts = SMatrix{2, 23}(cps[[2, 1], :] .* [-1., 1.]) * sim.L .+ centre
         
         ParametricBodies.update!(sim.body, new_pnts, sim.flow.Δt[end])
+        
         measure!(sim, t)
         using_biot_savart ? biot_mom_step!(sim.flow, sim.pois, ω_ml) : mom_step!(sim.flow, sim.pois)
         
@@ -107,11 +119,13 @@ anim = @animate for tᵢ in range(t₀, t₀+duration; step=tstep)
 # ===
 
     # Flow plot
-    @inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L / sim.U
+    #@inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L / sim.U; lims = 10
+    #@inside sim.flow.σ[I] = sim.flow.p[I]; lims = 1
+    @inside sim.flow.σ[I] = sim.flow.V[I]; lims = 0.2
     
-    contourf(clamp.(sim.flow.σ, -10, 10)', dpi=300, xlims=(centre[1]-0.25*sim.L, centre[1]+1.25*sim.L),
+    contourf(clamp.(sim.flow.σ, -lims, lims)', dpi=300, xlims=(centre[1]-0.25*sim.L, centre[1]+1.25*sim.L),
             ylims=(centre[2]-0.75*sim.L, centre[2]+0.75*sim.L),
-            color=palette(:RdBu_11), clims=(-10, 10), linewidth=0,
+            color=palette(:RdBu_11), clims=(-lims, lims), linewidth=0,
             aspect_ratio=:equal, legend=false, border=:none)
     
     # Body plot.
@@ -144,4 +158,8 @@ savefig("outputs/plot_04_force_" * caseId * "_Re_$ReynoldsNumber.png")
 
 # Clean up the VTK writer.
 close(wr)
+
+# ===
+# Read the pressure log.
+# include("./src/tools.jl"); using Plots; plot_logger("log_psolver.log")
 
