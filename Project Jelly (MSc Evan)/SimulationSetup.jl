@@ -1,48 +1,15 @@
-function clamped_uniform_knots(p::Int, n::Int)
-    k = zeros(Float64, n + p + 1)
-    k[p+1:end-p] .= range(0, 1, length=n - p + 1)
-    k[end-p+1:end] .= 1.0
-    return k
+### Current Functions
+function clamped_uniform_knots(p::Int, Ncp::Int)
+    @assert Ncp > p "Need at least p+1 control points"
+    Ninterior = Ncp - p - 1
+    # start: p+1 zeros
+    head = zeros(Float64, p + 1)
+    # interior: strictly between (0,1), uniform
+    interior = Ninterior > 0 ? collect(range(0.0, 1.0, length = Ninterior + 2))[2:end-1] : Float64[]
+    # end: p+1 ones
+    tail = ones(Float64, p + 1)
+    return vcat(head, interior, tail)
 end
-
-# grid_size = 48, meaning that I want the jellyfish diameter to span 48 grid cells.
-# Should I then scale all control points with the actual D_act = 1.25 meter before inputting them to the simulation?
-# D_act / grid_size = 1.25 / 48 = 0.02604166667 cm per grid cell.
-# cps * grid_size means that the jellyfish will cover only 1 grid cell ( I think??)
-# 
-
-@inline function dynamicSpline(::Type{T}=Float32; new_cps_list,D=2^7,Re=302,U=1,ϵ=0.5,thk=2ϵ+√3,mem=Array, use_biotsavart=false) where {T<:AbstractFloat}
-    cps = new_cps_list[1] .* D .+ SA{T}[4D,3D]
-    degree = 2
-    n_ctrl = size(cps, 2)
-    weights = ones(T, n_ctrl)
-    knots = T.(clamped_uniform_knots(degree, n_ctrl))
-
-    curve = NurbsCurve(cps, knots, weights)         
-
-    body = DynamicNurbsBody(curve; thk=thk, boundary=true)
-    ν = U*D/Re
-    return use_biotsavart ?
-    BiotSimulation((8D,6D),(0,0),D; U, ν, body, T, mem, ϵ) :
-    Simulation((8D,6D),(0,0),D; U, ν, body, T, mem,ϵ, 
-    # exitBC=true   
-    )
-end
-
-# @inline function dynamicSpline(::Type{T}=Float32; new_cps_list,L=2^5,Re=302,U=1,ϵ=0.5,thk=2ϵ+√3,mem=Array, use_biotsavart=false) where {T<:AbstractFloat} 
-#     cps = new_cps_list[1] .* L .+ SA{T}[4L,3L] 
-#     degree = 2 
-#     n_ctrl = size(cps, 2) 
-#     weights = ones(T, n_ctrl) 
-#     knots = T.(clamped_uniform_knots(degree, n_ctrl)) 
-#     curve = NurbsCurve(cps, knots, weights) 
-#     body = DynamicNurbsBody(curve; thk=thk, boundary=true) 
-#     ν = U*L/Re 
-#     return use_biotsavart ? 
-#     BiotSimulation((8L,6L),(0,0),L; U, ν, body, T, mem, ϵ) : 
-#     Simulation((8L,6L),(0,0),L; U, ν, body, T, mem,ϵ, # exitBC=true 
-#     ) 
-# end
 
 function get_body!(bod,sim,t=WaterLily.time(sim))
     @inside sim.flow.σ[I] = WaterLily.sdf(sim.body,SVector(Tuple(I).-0.5f0),t)
@@ -50,11 +17,134 @@ function get_body!(bod,sim,t=WaterLily.time(sim))
 end
 
 addbody(x,y;c=:black) = Plots.plot!(Shape(x,y), c=c, legend=false)
-function body_plot!(sim;levels=[0],lines=:black,R=inside(sim.flow.p))
+function body_plot!(sim;levels=[0],lines=:black,R=inside(sim.flow.p),title)
     WaterLily.measure_sdf!(sim.flow.σ,sim.body,WaterLily.time(sim))
-    # contour!(sim.flow.σ[R]'|>Array;levels,lines)
-    plot!(sim.body.curve, shift=(0.5, 0.5), add_cp=true)
+    contour!(sim.flow.σ[R]'|>Array;levels,lines, title=title)        # Plot signed distance function of body
+    # plot!(sim.body.curve, shift=(0.5, 0.5), add_cp=true)
+    # xs = range(0, 300, length=200)
+    # ys = range(0, 300, length=200)
+    # Z = [sdf(sim.body, SA[x, y]) for y in ys, x in xs]
+
+    # heatmap(xs, ys, Z; color=:viridis, aspect_ratio=1, title="Signed Distance Field")
+    # contour!(xs, ys, Z, levels=[0.0], linewidth=2, color=:green, title=title)  # Contour where sdf=0
+
+    # heatmap(sim.flow.σ[R]', clim=(-0.1, 0.1), title=title)  # this shows small nonzero ghost blobs
 end
+
+@inline function dynamicSpline(::Type{T}=Float32; 
+    new_cps_list, D=2^7, Re=302, U=1, ϵ=0.5, thk=2ϵ+√3, deg, 
+    mem=Array, use_biotsavart=false, U_func=nothing) where {T<:AbstractFloat}
+
+    cps = new_cps_list[1] .* 2 .* D .+ SA{T}[3D, 3D]
+    degree = deg
+    n_ctrl = size(cps, 2)
+    weights = ones(T, n_ctrl)
+    knots = T.(clamped_uniform_knots(degree, n_ctrl))
+    curve = NurbsCurve(cps, knots, weights)
+
+    body = DynamicNurbsBody(curve; thk=thk, boundary=true)
+
+    ν = U * D / Re
+
+    # Wrap U_func into uBC(i, x, t) for WaterLily if provided
+    # uBC = if U_func === nothing
+    #     (U, 0)
+    # else
+    #     (i, x, t) -> U_func(x, t, D)[i]
+    # end
+    uBC = (0,0)
+    return use_biotsavart ?
+        BiotSimulation((8D, 6D), uBC, D; U, ν, body, T, mem, ϵ) :
+        Simulation((8D, 6D), uBC, D; U, ν, body, T, mem, ϵ)
+end
+
+function sim_gif_forces!(sim, new_cps_list;
+                         duration=1, period=3, step=0.1, verbose=true,
+                         R=inside(sim.flow.p), remeasure=false, plotbody=false, kv...)
+
+    Tp = eltype(sim.flow.p)
+    t₀ = round(sim_time(sim))
+    t = sum(sim.flow.Δt[1:end-1])  # current sim time
+
+    v = Float32(0); s = Float32(0)
+    in_period = true
+    periodic_force = zero(Tp)
+    t_start = 0
+
+    # --- storage for force history ---
+    f_hist = Tp[0]      # store Fx or full force vector if needed
+    period = period * sim.L / sim.U
+
+    anim = @animate for tᵢ in range(t₀, t₀+duration; step)
+        while t < tᵢ * sim.L / sim.U
+            sim.flow.Δt[end] = WaterLily.CFL(sim.flow; Δt_max=Tp(0.1))
+            # Δt = sim.flow.Δt[end]
+            cps_interp, v, s = interpolate_cps_hermite_new(new_cps_list, t, period, v, s, sim.flow.Δt[end], f_hist[end])
+            @show v, s, f_hist[end]
+
+            body_interpolation = cps_interp .* 2 .* sim.L .+ (Tp(3sim.L), Tp(3sim.L))
+
+            sim.sim.body = ParametricBodies.update!(sim.sim.body, body_interpolation, sim.flow.Δt[end])
+
+            sim_step!(sim, tᵢ; remeasure)
+
+            raw    = WaterLily.total_force(sim)
+            scaled = raw ./ (0.5 * sim.L * sim.U^2)
+            if in_period
+                periodic_force += scaled[1]
+                if t - t_start >= period
+                    in_period = false
+                end
+            end
+
+            push!(f_hist, scaled[1])  # store x-force (or push!(f_hist, scaled) to keep both)
+            t += sim.flow.Δt[end]'
+        end
+        # --- visualization ---
+        @inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L/sim.U
+        @inside sim.flow.σ[I] = ifelse(abs(sim.flow.σ[I]) < 0.001, 0.0, sim.flow.σ[I])
+        # @inside sim.flow.σ[I] = WaterLily.div(I,sim.flow.u)
+        # @show maximum(abs,sim.flow.σ[R]|>Array)
+        # push!(div, maximum(abs,sim.flow.σ[R]|>Array))
+        flood(sim.flow.σ[R] |> Array; clims=(-5,5), kv...)
+        # contour(sim.flow.p')
+        plotbody && body_plot!(sim; title="$tᵢ")
+
+        verbose && println("t=", round(t, digits=4),
+                           ", Δt=", round(sim.flow.Δt[end], digits=3))
+    end 
+
+    gif(anim,"Swimming_Jelly.gif")
+
+    return (forces=f_hist)
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Older functions
 
 function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
                   remeasure=false,plotbody=false,kv...)
@@ -238,7 +328,7 @@ function sim_gif_2!(sim, new_cps_list;duration=1,step=0.1,verbose=true,R=inside(
             # @show k
             α = (t_phys % Δt_cps) / Δt_cps
             cps_interp = (1-α) .* new_cps_list[k] .+ α .* new_cps_list[min(k+1, nsteps)]
-            body_interpolation = cps_interp .* sim.L .+ (Tp(4sim.L), Tp(3sim.L))
+            body_interpolation = cps_interp .* sim.L .+ (Tp(sim.L), Tp(2sim.L))
 
             body_interpolation = SMatrix{2,41,Float32,82}(body_interpolation)
             # body_interpolation = new_cps_list[idx] .* sim.L .+ (Tp(4sim.L),Tp(3sim.L))
@@ -273,91 +363,4 @@ function sim_gif_2!(sim, new_cps_list;duration=1,step=0.1,verbose=true,R=inside(
     end
 end
 
-function sim_gif_forces!(sim, new_cps_list;
-                         duration=1, period=3, cycles=1, step=0.1, verbose=true,
-                         R=inside(sim.flow.p), remeasure=false, plotbody=false, kv...)
 
-    Tp = eltype(sim.flow.p)
-    t₀ = round(sim_time(sim))
-    t = sum(sim.flow.Δt[1:end-1])  # current sim time
-
-    v = Float32(0); s = Float32(0)
-    in_period = true
-    periodic_force = zero(Tp)
-    t_start = 0
-
-    # --- storage for force history ---
-    ts   = Tp[]
-    dts  = Tp[]
-    f_hist = Tp[]      # store Fx or full force vector if needed
-    interp_state = Tp[]
-    div = Tp[]
-
-    T      = period * sim.L / sim.U  # total period length
-    nsteps = Int(length(new_cps_list) / cycles)
-    @show typeof(nsteps)
-    Δt_cps = period / (nsteps-1) * sim.L / sim.U  # spacing of cps list (seconds)
-
-    anim = @animate for tᵢ in range(t₀, t₀+duration; step)
-        while t < tᵢ * sim.L / sim.U
-            # adaptive timestep
-            sim.flow.Δt[end] = WaterLily.CFL(sim.flow; Δt_max=Tp(0.1))
-            Δt = sim.flow.Δt[end]
-
-            # --- geometry interpolation ---
-            τ = mod(t, T)
-            k = floor(Int, t / Δt_cps)+1
-
-            α = (τ % Δt_cps) / Δt_cps
-
-            cps_k  = new_cps_list[k]
-            cps_k1 = new_cps_list[mod1(k+1, nsteps)]
-            cps_interp = (1-α) .* cps_k .+ α .* cps_k1
-            
-            # @show new_cps_list[k]
-            body_interpolation = cps_interp .* sim.L .+ (Tp(4sim.L), Tp(3sim.L))
-            body_interpolation = SMatrix{2, size(cps_k,2), Float32}(body_interpolation)
-
-            sim.sim.body = ParametricBodies.update!(sim.sim.body, body_interpolation, Δt)
-
-            # --- advance one step ---
-            sim_step!(sim, tᵢ; remeasure)
-
-            # verbose && @show scaled
-            # push!(interp_state, t)
-
-            # if in_period
-            #     periodic_force += scaled[1]
-            #     if t - t_start >= period
-            #         in_period = false
-            #     end
-            # end
-            # raw    = WaterLily.total_force(sim)
-            # scaled = raw ./ (0.5 * sim.L * sim.U^2)
-            # push!(f_hist, scaled[1])  # store x-force (or push!(f_hist, scaled) to keep both)
-            # push!(ts, t)
-            t += Δt
-        end
-        # --- forces ---
-
-        # push!(dts, sim.flow.Δt[end])
-
-        # --- visualization ---
-        @inside sim.flow.σ[I] = WaterLily.curl(3, I, sim.flow.u) * sim.L/sim.U
-        @inside sim.flow.σ[I] = ifelse(abs(sim.flow.σ[I]) < 0.001, 0.0, sim.flow.σ[I])
-        # @inside sim.flow.σ[I] = WaterLily.div(I,sim.flow.u)
-        # @show maximum(abs,sim.flow.σ[R]|>Array)
-        # push!(div, maximum(abs,sim.flow.σ[R]|>Array))
-        flood(sim.flow.σ[R] |> Array; clims=(-0.05,0.05), kv...)
-        plotbody && body_plot!(sim)
-
-        verbose && println("t=", round(t, digits=4),
-                           ", Δt=", round(sim.flow.Δt[end], digits=3))
-    end 
-
-    gif(anim,"Swimming_Jelly.gif")
-
-    return (ts=ts, dts=dts, forces=f_hist,
-            periodic_force=periodic_force,
-            interp_state=interp_state, div=div)
-end
