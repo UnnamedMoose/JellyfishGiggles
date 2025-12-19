@@ -1,61 +1,6 @@
 Tp = Float32
-
-"""
-Fit and evaluate band-limited Fourier model for a set of CP time series.
-- cps_series: Vector of SMatrix{2,N,T} at times t (length M)
-- t: times (length M)
-- t_eval: time(s) where you want CPs
-- period: cycle period
-- K: number of harmonics
-Returns: SMatrix{2,N,Float64} (or Vector thereof if t_eval is a vector)
-"""
-function cps_fourier_interpolator(cps_series::Vector{<:SMatrix{2,N,T}}, t::AbstractVector,
-                                  t_eval, period::Real, K::Int) where {N,T}
-    M = length(t)
-    @assert length(cps_series) == M
-    # phase in [0, 2π)
-    φ = 2π .* (t .% period) ./ period
-
-    # Build design matrix Φ: [1, cosφ, sinφ, ..., cosKφ, sinKφ]
-    function design(φ)
-        Φ = Matrix{Float64}(undef, length(φ), 1 + 2K)
-        Φ[:,1] .= 1.0
-        for k in 1:K
-            Φ[:, 2k]   = cos.(k .* φ)
-            Φ[:, 2k+1] = sin.(k .* φ)
-        end
-        Φ
-    end
-    Φ = design(φ)
-
-    # Stack CP coords over time into (M × N) matrices for x and y
-    X = hcat([Array(cs)[1, :] for cs in cps_series]...)'  # M×N
-    Y = hcat([Array(cs)[2, :] for cs in cps_series]...)'  # M×N
-
-    # Solve least squares for each column j (independent CPs)
-    # Coeff matrices: Cx, Cy are (1+2K) × N
-    Cx = Φ \ X   # (1+2K)×N
-    Cy = Φ \ Y
-
-    # Evaluation helper
-    function eval_at_time(tq)
-        φq = 2π * (mod(tq, period) / period)
-        Φq = design([φq])             # 1×(1+2K)
-        xq = (Φq * Cx) |> vec         # length N
-        yq = (Φq * Cy) |> vec
-        # @SMatrix [xq'; yq']
-        SMatrix{2,N,Float64}(hcat(xq, yq)'...)
-    end
-
-    if isa(t_eval, AbstractVector)
-        return [eval_at_time(tq) for tq in t_eval]
-    else
-        return eval_at_time(t_eval)
-    end
-end
-
-
 """ Interpolation functions for control point sets (CPS) using Hermite splines version 1. """
+
 @inline function interpolate_cps_hermite(new_cps_list, t::Tp, Δt::Tp, sim, v::Tp, s::Tp, force; nphases::Int=10) where Tp
     period = Tp(6) * sim.L / sim.U
     τ_total = t / period
@@ -110,125 +55,50 @@ end
 end
 
 """ Interpolation functions for control point sets (CPS) using Hermite splines version 2. """
-@inline function interpolate_cps_hermite_new(new_cps_list, t::Tp, period; nphases::Int=10, tangent_scale=0.5) where Tp
+@inline function interpolate_cps_hermite_new(new_cps_list, t::Tp, period, v, s, Δt, force; nphases::Int=10) where Tp
     τ_total = t / period
+
     k = floor(Int, τ_total * nphases)
     τ_local = τ_total * nphases - k
-    
+
     idx0 = mod(k, nphases) + 1
     idx1 = mod(k + 1, nphases) + 1
     idx_prev = mod(k - 1, nphases) + 1
     idx_next = mod(k + 2, nphases) + 1
+    p0 = new_cps_list[idx0]
+    p1 = new_cps_list[idx1]
+    m0 = (p1 - new_cps_list[idx_prev]) ./ 2
+    m1 = (new_cps_list[idx_next] - p0) ./ 2
 
-    cps_prev = new_cps_list[idx_prev]
-    cps0     = new_cps_list[idx0]
-    cps1     = new_cps_list[idx1]
-    cps_next = new_cps_list[idx_next]
-
-    # Damped Catmull-Rom style tangents
-    max_speed = 0.02
-    m0 = clamp.(tangent_scale .* (cps1 - cps_prev), -max_speed, max_speed)
-    m1 = clamp.(tangent_scale .* (cps_next - cps0), -max_speed, max_speed)
-
-    τ2 = τ_local^2
-    τ3 = τ_local^3
+    τ = τ_local
+    τ2 = τ^2
+    τ3 = τ^3
 
     h00 = 2τ3 - 3τ2 + 1
-    h10 = τ3 - 2τ2 + τ_local
+    h10 = τ3 - 2τ2 + τ
     h01 = -2τ3 + 3τ2
     h11 = τ3 - τ2
 
-    return h00 .* p0 .+ h10 .* m0 .+ h01 .* p1 .+ h11 .* m1
+    interpolated = (h00 .* p0 .+ h10 .* m0 .+ h01 .* p1 .+ h11 .* m1) 
     # interpolated = (1-τ_local) .* p0 .+ τ_local .* p1 #.+ SA{Tp}[D,2D] # Linear fallback 
-    return interpolated
-end
-
-
-
-"""
-    build_cps_fourier(cps_series, t_series, period; K=4)
-
-Fit a band-limited Fourier model to periodic control-point sets.
-
-# Arguments
-- cps_series :: Vector{SMatrix{2, N, T}}  → keyframe control-point sets
-- t_series   :: AbstractVector{<:Real}    → times of each keyframe (same length)
-- period     :: Real                      → total period of motion (in seconds or nondim)
-- K          :: Int                       → number of Fourier harmonics (default 4)
-
-# Returns
-CPSFourier model (contains Fourier coefficients and metadata)
-"""
-function build_cps_fourier(cps_series,
-                           t_series::AbstractVector{<:Real},
-                           period::Real; K::Int=4) where {N,T}
-    M = length(t_series)
-    @assert M == length(cps_series) "Keyframe times and cps count must match."
-
-    φ = 2π .* (t_series .% period) ./ period
-
-    # Design matrix Φ: [1, cosφ, sinφ, ..., cosKφ, sinKφ]
-    Φ = ones(M, 1 + 2K)
-    for k in 1:K
-        Φ[:, 2k]   .= cos.(k .* φ)
-        Φ[:, 2k+1] .= sin.(k .* φ)
+    # interpolated = p0
+    # if τ_total > 1
+    #     a = (force / period) / (get_area(interpolated))
+    # else
+    #     a = zero(Tp)
+    # end
+    a = (force / period) / (get_area(interpolated))
+    if 0 < idx0 < 4 
+        v = Float32(v + a * Δt) 
+    else 
+        v = Float32(0)
     end
 
-    # Stack x, y coordinates over time
-    X = reduce(vcat, [Float64.(Array(C)[1, :])' for C in cps_series])  # M×N
-    Y = reduce(vcat, [Float64.(Array(C)[2, :])' for C in cps_series])  # M×N
+    s = Float32(1*(s + v * Δt))
 
-    # Least-squares Fourier coefficients
-    Cx = Φ \ X    # (1+2K) × N
-    Cy = Φ \ Y
-
-    return (; Cx, Cy, K, period, T=Float64)
+    # state = polyline_self_intersects(interpolated)
+    return interpolated, v, s
 end
-
-"""
-    eval_cps(model, t)
-
-Evaluate control-point position, velocity, and acceleration at time `t`
-from a Fourier model built by `build_cps_fourier`.
-
-Returns three SMatrix{2,N,Float64} objects: (cps, dcps, acps)
-"""
-function eval_cps(model::NamedTuple, t::Real)
-    K = model.K
-    ω = 2π / model.period
-    φ = ω * (t % model.period)
-
-    # Preallocate basis vectors
-    Φ  = Vector{Float64}(undef, 1 + 2K)
-    dΦ = Vector{Float64}(undef, 1 + 2K)
-    aΦ = Vector{Float64}(undef, 1 + 2K)
-    Φ[1] = 1; dΦ[1] = 0; aΦ[1] = 0
-    for k in 1:K
-        c, s = cos(k*φ), sin(k*φ)
-        Φ[2k]   = c;   Φ[2k+1] = s
-        dΦ[2k]  = -k*ω*s;  dΦ[2k+1] =  k*ω*c
-        aΦ[2k]  = -(k*ω)^2*c;  aΦ[2k+1] = -(k*ω)^2*s
-    end
-
-    # Evaluate Fourier sums
-    x  = (Φ'  * model.Cx) |> vec
-    y  = (Φ'  * model.Cy) |> vec
-    vx = (dΦ' * model.Cx) |> vec
-    vy = (dΦ' * model.Cy) |> vec
-    ax = (aΦ' * model.Cx) |> vec
-    ay = (aΦ' * model.Cy) |> vec
-
-    N = length(x)
-    T = Float64
-
-    cps  = SMatrix{2, N, T}(hcat(x,  y )'...)
-    dcps = SMatrix{2, N, T}(hcat(vx, vy)'...)
-    acps = SMatrix{2, N, T}(hcat(ax, ay)'...)
-
-    return cps, dcps, acps
-end
-
-
 
 
 # --- Geometry helpers (2D) ---

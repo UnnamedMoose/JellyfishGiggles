@@ -1,0 +1,65 @@
+┌ Error: Error during loading of extension WaterLilyCUDAExt of WaterLily, use `Base.retry_load_extensions()` to retry.
+│   exception =
+│    1-element ExceptionStack:
+│    InitError: AssertionError: CUDA.functional()
+│    Stacktrace:
+│      [1] __init__()
+│        @ WaterLilyCUDAExt ~/.julia/packages/WaterLily/O8g3K/ext/WaterLilyCUDAExt.jl:11
+│      [2] run_module_init(mod::Module, i::Int64)
+│        @ Base ./loading.jl:1378
+│      [3] register_restored_modules(sv::Core.SimpleVector, pkg::Base.PkgId, path::String)
+│        @ Base ./loading.jl:1366
+│      [4] _include_from_serialized(pkg::Base.PkgId, path::String, ocachepath::String, depmods::Vector{Any}, ignore_native::Nothing; register::Bool)
+│        @ Base ./loading.jl:1254
+│      [5] _include_from_serialized (repeats 2 times)
+│        @ ./loading.jl:1210 [inlined]
+│      [6] _require_search_from_serialized(pkg::Base.PkgId, sourcepath::String, build_id::UInt128, stalecheck::Bool; reasons::Dict{String, Int64}, DEPOT_PATH::Vector{String})
+│        @ Base ./loading.jl:2057
+│      [7] _require(pkg::Base.PkgId, env::Nothing)
+│        @ Base ./loading.jl:2527
+│      [8] __require_prelocked(uuidkey::Base.PkgId, env::Nothing)
+│        @ Base ./loading.jl:2388
+│      [9] #invoke_in_world#3
+│        @ ./essentials.jl:1089 [inlined]
+│     [10] invoke_in_world
+│        @ ./essentials.jl:1086 [inlined]
+│     [11] _require_prelocked
+│        @ ./loading.jl:2375 [inlined]
+│     [12] _require_prelocked
+│        @ ./loading.jl:2374 [inlined]
+│     [13] run_extension_callbacks(extid::Base.ExtensionId)
+│        @ Base ./loading.jl:1544
+│     [14] run_extension_callbacks(pkgid::Base.PkgId)
+│        @ Base ./loading.jl:1576
+│     [15] run_package_callbacks(modkey::Base.PkgId)
+│        @ Base ./loading.jl:1396
+│     [16] __require_prelocked(uuidkey::Base.PkgId, env::String)
+│        @ Base ./loading.jl:2399
+│     [17] #invoke_in_world#3
+│        @ ./essentials.jl:1089 [inlined]
+│     [18] invoke_in_world
+│        @ ./essentials.jl:1086 [inlined]
+│     [19] _require_prelocked(uuidkey::Base.PkgId, env::String)
+│        @ Base ./loading.jl:2375
+│     [20] macro expansion
+│        @ ./loading.jl:2314 [inlined]
+│     [21] macro expansion
+│        @ ./lock.jl:273 [inlined]
+│     [22] __require(into::Module, mod::Symbol)
+│        @ Base ./loading.jl:2271
+│     [23] #invoke_in_world#3
+│        @ ./essentials.jl:1089 [inlined]
+│     [24] invoke_in_world
+│        @ ./essentials.jl:1086 [inlined]
+│     [25] require(into::Module, mod::Symbol)
+│        @ Base ./loading.jl:2260
+│     [26] include(mod::Module, _path::String)
+│        @ Base ./Base.jl:562
+│     [27] exec_options(opts::Base.JLOptions)
+│        @ Base ./client.jl:323
+│     [28] _start()
+│        @ Base ./client.jl:531
+│    during initialization of module WaterLilyCUDAExt
+└ @ Base loading.jl:1550
+[ Info: Running with 16 Julia threads
+GKS: cannot open display - headless operation mode active
