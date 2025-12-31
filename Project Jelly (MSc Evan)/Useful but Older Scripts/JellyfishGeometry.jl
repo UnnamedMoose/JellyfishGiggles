@@ -1,7 +1,4 @@
-using LinearAlgebra
-using Statistics
-using Dierckx
-using StaticArrays
+include("New_Geometry_Trial.jl")
 
 function create_cps_list(::Type{T}) where {T<:AbstractFloat}
     """
@@ -43,33 +40,8 @@ function create_cps_list(::Type{T}) where {T<:AbstractFloat}
 
     start = SA{T}[0.000 0.000 0.000 0.000;
             0.000 -0.010 -0.020 -0.030]
-    start2 = SA{T}[0.000 0.000 0.000 0.000;
-            0.000 0.010 0.020 0.030]
     ending = SA{T}[0.000 0.000 0.000 0.000;
                 0.030 0.020 0.010 0.000]
-
-    @inline function interpolate_points(cps_1::SMatrix{2,N,T}; n=50) where {N,T}
-        # parameter (you can also use true arc length, but index-based is fine for now)
-        # s = collect(1:size(cps_1[1,:], 2))
-        # s = collect(1:length(cps_1[1,:]))
-
-        # # Define cubic B-spline interpolation (C² continuous)
-        # itp_x = Interpolations.interpolate(cps_1[1,:], Interpolations.BSpline(Interpolations.Cubic(Interpolations.Natural(OnGrid()))))
-        # itp_y = Interpolations.interpolate(cps_1[2,:], Interpolations.BSpline(Interpolations.Cubic(Interpolations.Natural(OnGrid()))))
-
-        # # Evaluate
-        # s_fine = range(first(s), last(s), length=n)
-        # x_smooth = itp_x.(s_fine)
-        # y_smooth = itp_y.(s_fine)
-        s = 1:length(cps_1[1,:])
-        spl_x = Spline1D(s, cps_1[1,:]; s=0.0001)  # smoothing factor s>0
-        spl_y = Spline1D(s, cps_1[2,:]; s=0.0001)
-        x_smooth = spl_x.(range(1, length(cps_1[1,:]), length=n))
-        y_smooth = spl_y.(range(1, length(cps_1[2,:]), length=n))
-        
-        return SMatrix{2,n,T}(hcat(x_smooth, y_smooth)'...)
-    end
-
     """
     Resample a parametric curve into an SMatrix{2,N,T}.
     curve(s) return an SVector{2,T}.
@@ -97,19 +69,19 @@ function create_cps_list(::Type{T}) where {T<:AbstractFloat}
     T.B.A. Not change the flap coordinates, only the bell coordinates.
     """
     function optimize_control_points(cps::SMatrix{2,N,T}, reference_area;
-                                    λ_area::T = T(1e-1),
+                                    λ_area::T = T(1e-2),
                                     λ_shape::T = T(1e-3),
                                     degree::Int = 2,
                                     nsamples::Int = 500) where {N,T}
 
-        fixed_pt = cps[:, 1:3]  # first and last point (fixed)
+        fixed_pt = cps[:, 1]  # first and last point (fixed)
         last_pt = cps[:, 11:end]
         fixed_pts = cps[:, ]
         # n_inner = N - 2       # number of inner points
-
+        
         # Vectorize inner control points only
         # x0_inner = vec(Matrix(cps[:, 2:N-1]))  # 2*(N-2) vector
-        x0_inner =  vec(Matrix(cps[:, 4:10]))
+        x0_inner =  vec(Matrix(cps[:, 2:10]))
         n_inner = length(x0_inner) ÷ 2
         s_vals = range(0, stop=1, length=nsamples)
 
@@ -185,30 +157,26 @@ function create_cps_list(::Type{T}) where {T<:AbstractFloat}
     
 
     cps_list_og     = [cps_0, cps_1, cps_2, cps_3, cps_4, cps_5, cps_6, cps_7, cps_8, cps_9] #10-element (Vector{SMatrix{2, 22, Float32, 44}})
-    # cps_list_og     = [hcat(start2, cps[:,2:end]) for cps in cps_list_og]
-    # cps_list_og     = [SMatrix{2, 24, Float64, 48}(cps) for cps in cps_list_og]
     # cps_list_cleaned = [cps[:, [1:9; 11:13; 15:end]] for cps in cps_list_og]
     # cps_list_og = [SMatrix{2, 19, T}(cps) for cps in cps_list_cleaned]
-   
-
-
-    s_vals          = range(0, stop=1, length=500)                                                          # Sample points                                          # Reference curve for area comparison
+    curves          = [BSplineCurve(cps; degree=2) for cps in cps_list_og]
+    Npoints         = 50
+    cps_list_og     = [resample_curve(curve, Npoints) for curve in curves]
+    # Control point optimisation by area matching and shape preservation
+    s_vals          = range(0, stop=1, length=500)                                                          # Sample points 
+    # ref_crv         = BSplineCurve(discretized_set[1]; degree=2)                                               # Reference curve for area comparison
     ref_crv         = BSplineCurve(cps_list_og[1]; degree=2)
     ref_points      = [ref_crv(s) for s in s_vals]                                                          # Evaluate the reference curve at the sampled points
     reference_area  = poly_area(ref_points)                                                                 # Calculate the area of the reference polygon
     opt_cps_list    = [optimize_control_points(cps, reference_area) for cps in cps_list_og]
-
-    curves          = [BSplineCurve(cps; degree=2) for cps in opt_cps_list]
-    Npoints         = 100
-    cps_list_og     = [resample_curve(curve, Npoints) for curve in curves]
-
-    cps_list        = make_symmetric_jelly(cps_list_og)                   # Vector{Matrix{Float32}}
+    cps_list        = make_symmetric_jelly(opt_cps_list)                   # Vector{Matrix{Float32}}
 
     new_cps_list    = reverse_cps_list(cps_list)                       # Change the cps_list from clockwise to counterclockwise order
     new_cps_list    = [hcat(start, cps[:,2:end-1], ending) for cps in new_cps_list]
-    new_cps_list    = [SMatrix{2, 205, Float64, 410}(cps) for cps in new_cps_list]
+    new_cps_list    = [SMatrix{2, 105, Float64, 210}(cps) for cps in new_cps_list]
 return new_cps_list
 end
+
 
 """
     Old functions within the geometry generation process.

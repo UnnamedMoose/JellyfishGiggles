@@ -1,135 +1,326 @@
-include("New_Simu_Trial.jl")
-include("Jellyfish_3D.jl")
-ThreeD = false
-D = 2^5; Re = 302; U = 1; ϵ = 0.5; thk = 2ϵ+√3; deg = 2  
-cycles = 5 # user-defined number of motion cycles
-period = 3  # jellyfish motion period is ~1 second
-duration = cycles * period  # duration of simulation
+using LinearAlgebra, Printf, Statistics, Plots, ParametricBodies, StaticArrays
+using WaterLily, CUDA       ### Note that WaterLily functionalities have been adjusted before moving to DelftBlue.
+using GeometryBasics, Optim
+using BiotSavartBCs
+using Interpolations: LinearInterpolation
+using DelimitedFiles, DataFrames, CSV
+using GLMakie
+using Dierckx
+using Images, ImageMagick, ImageIO
+using Meshing
 
-function make_circle_cps_sin_motion(T::Type, npoints::Int, nsteps::Int; radius=1.0, freq=0.1, amplitude=(1.0, 1.0))
-    cps_list = Vector{SMatrix{2, npoints, T}}(undef, nsteps)
+import WaterLily: @loop,scale_u!,conv_diff!,udf!,accelerate!,BDIM!
 
-    θ = range(0, 2π, length=npoints)
+import WaterLily: CFL
+CFL(a::Flow;Δt_max=10) = 0.1
 
-    for k in 0:nsteps-1
-        phase = 2π * 3 * (k / (nsteps - 1))    # sweeps exactly `cycles` times
-        shift = (
-            amplitude[1] * sin(phase),
-            amplitude[2] * cos(phase)
-        )
-        x = radius .* cos.(θ) .+ shift[1]
-        y = radius .* sin.(θ) .+ shift[2]
-        cps_list[k+1] = SMatrix{2, npoints, T}(vcat(x', y')...)
+import WaterLily: sim_step!
+function sim_step!(sim::AbstractSimulation,t_end;remeasure=true,λ=quick,max_steps=typemax(Int),verbose=false,
+        udf=nothing,kwargs...)
+    steps₀ = length(sim.flow.Δt)
+    while sim_time(sim) < t_end && length(sim.flow.Δt) - steps₀ < max_steps
+        sim_step!(sim; remeasure, λ, udf, kwargs...)
+        verbose && sim_info(sim)
     end
-
-    return cps_list
 end
 
-# new_cps_list    = make_circle_cps_sin_motion(Float64, 25, 100; radius=0.25,freq=0.01, amplitude=(0.25, 0.25))
-path_x, path_y, cps_contr, cps_exp, cps_list_new    = construct_jelly_motion(50,0.001,0.75,5,1; ThreeD=ThreeD)
-function blend_cycles(v::Vector{Any}, n_cycles::Int; overlap_ratio=0.1) where {T<:Real}
-    n = length(v)
-    overlap = round(Int, n * overlap_ratio)
-    result = copy(v)
-
-    for _ in 2:n_cycles
-        a = v[end-overlap+1:end]
-        b = v[1:overlap]
-        blend = (1 .- range(0, 1, length=overlap)) .* a .+ range(0, 1, length=overlap) .* b
-        result = vcat(result[1:end-overlap], blend, v[overlap+1:end])
-    end
-    return result
-end
-path_x = [blend_cycles(p, 5) for p in path_x]
-path_y = [blend_cycles(p, 5) for p in path_y]
-
-function exp_smooth(x::Vector{Any}, α::T) where {T<:Real}
-    s₀ = similar(x)     # First do a forward pass
-    s₀[1] = x[1]
-    for t in 2:length(x)
-        s₀[t] = α * x[t] + (1 - α) * s₀[t-1]
-    end
-    s₁ = similar(x)     # Then do a backward pass
-    s₁[end] = s₀[end]
-    for t in (length(x)-1):-1:1
-        s₁[t] = α * s₀[t] + (1 - α) * s₁[t+1]
-    end
-    return s₁
+import BiotSavartBCs: biot_mom_step!,biot_project!
+function biot_mom_step!(a::Flow{N},b,ω...;λ=quick,udf=nothing,fmm=true,U,kwargs...) where N
+    a.u⁰ .= a.u; scale_u!(a,0); t₁ = sum(a.Δt); t₀ = t₁-a.Δt[end]
+    # predictor u → u'
+    @log "p"
+    conv_diff!(a.f,a.u⁰,a.σ,λ,ν=a.ν)
+    udf!(a,udf,t₀; kwargs...)
+    BDIM!(a);
+    biot_project!(a,b,ω...,U;fmm) # new
+    # corrector u → u¹
+    @log "c"
+    conv_diff!(a.f,a.u,a.σ,λ,ν=a.ν)
+    udf!(a,udf,t₁; kwargs...)
+    BDIM!(a); scale_u!(a,0.5)
+    biot_project!(a,b,ω...,U;fmm,w=0.5) # new
+    push!(a.Δt,CFL(a))
 end
 
-len = length(path_x)
-path_x_smooth = [exp_smooth(path_x[i], 0.250) for i in 1:len]
-path_y_smooth = [exp_smooth(path_y[i], 0.250) for i in 1:len]
+Tp = Float64; T = Float64
 
-function control_point_functions(sx, sy, t_points)
-    N = length(sx)
-    vel_funcs = Vector{Function}(undef, N)
-    interp_funcs = Vector{Function}(undef, N)
-    for i in 1:N
-        fx = LinearInterpolation(t_points, sx[i], extrapolation_bc=Flat())
-        fy = LinearInterpolation(t_points, sy[i], extrapolation_bc=Flat())
-        vx = [diff(path_x[i]) ./ diff(t_points) for i in 1:N]
-        vy = [diff(path_y[i]) ./ diff(t_points) for i in 1:N]
+"""
+Include the background packages where functions are formed.
+"""
 
-        ax = [diff(vx[i]) ./ diff(t_points[2:end]) for i in 1:N]
-        ay = [diff(vy[i]) ./ diff(t_points[2:end]) for i in 1:N]
-        
-        velx = LinearInterpolation(t_points[2:end], vx[i], extrapolation_bc=Flat())
-        vely = LinearInterpolation(t_points[2:end], vy[i], extrapolation_bc=Flat())
+include("Background_functions.jl")
 
-        accx = LinearInterpolation(t_points[3:end], ax[i], extrapolation_bc=Flat())
-        accy = LinearInterpolation(t_points[3:end], ay[i], extrapolation_bc=Flat())
+""" --- Simulation Parameters --- """
+ThreeD      = true             # ThreeD optionality
+D           = 2^5               # Grid size of Jellyfish diameter
+Re          = 302               # Reynolds Number (From Sahin 2009) (UD/ν) based on avg medusa velocity of 2.42 cm/s
+St          = 0.52              # Strouhal number (From Sahin 2009) (D/(UT)) based on avg medusa velocity of 2.42 cm/s
+U           = 1                 # Reference velocity
+ϵ           = 1                 # Boundary cell thickness
+thk         = 2ϵ+√3             # Boundary layer thickness
+deg         = 2                 # Polynomial degree to describe jellyfish boundary
+cycles      = 5                 # user-defined number of motion cycles
+period      = (D/U) / St        # jellyfish motion period is ~1 second, non-dimensionalised
+duration    = cycles * period   # total duration of motion
 
-        vel_funcs[i] = t -> SA[velx(t), vely(t)]
-        interp_funcs[i] = t -> SA[fx(t), fy(t)]
-    end
-    return vel_funcs, interp_funcs
+""" --- Control Point Generation ---
+Generation Process:
+1. A set of control points, digitized from Sahin 2009, representing the bell kinematics of the (half) jellyfish, is used to define the motion of the body.
+2. This set of control points is split into a contraction and expansion phase, consisting of 5 steps each, with the starting cps set of the next phase added at the end of the current phase to ensure continuity.
+3. The number of control points to define each time step is extended to a number of Ncps (first input of constructor).
+4. Next, the number of frames to define a full cycle is expanded, using a spline method (or the exponential smoothing method).
+    This spline method defines 2 '1D splines' for each control point, to describe its motion in x- and y-direction as a spline.
+    From this spline, it derives a new and extended pathing for each contorl point coordinate. The spline should ensure continuity of the pathing, as it is a parametrisation.
+    To define smoothing, adjust the spline_s in the constructor. The number of frames to define a full cycle is contorlled by the upsample variable in the constructor. # upsamples is added in between each original frame.
+5. The new set of frames with control points is then mirrorred and the control point order reversed to acquire the right definition of the body for WaterLily.jl
+6. At the origin of the jellyfish, points are added to create C2 continuity. With the points, basically a straight line is formed at the origin.
+7. It outputs the paths of each coordinate (for x and y), the contraction and expansion control point sets and the full cps list.
+
+Right now I hardcoded the expansion phase to be 2* the contraction phase.
+Input Parameters:
+construct_jelly_motion: Ncps = number of control points, spline_s = spline smoothing factor, up = number of upsamples.
+γ is the fraction between the length of the expansion phase and the contraction phase
+λ_area is the strictness of area conservation for the conservation optimiser
+λ_shape is the strictness of keeping shape during optimising.
+α is the exponential smoothing coefficient
+
+What influences pathing (smoothness)?: spline smoothing, number of upsamples, exponential smoothing, are conservation optimiser
+So check 'convergence' of spline_s, up, α for control point pathing.
+
+In terms of shape and sdf, the Ncps and deg are important parameters to consider.
+
+γ influences the kinematics, it will be a control parameter for the actual research.
+"""
+Ncps = 50; spline_s = 0.001; up = 10; α=0.250
+
+path_x, path_y                                      = construct_jelly_motion(Ncps,spline_s,up, deg)
+path_x                                              = [blend_cycles(p, 35) for p in path_x]
+path_y                                              = [blend_cycles(p, 35) for p in path_y]
+len                                                 = length(path_x)
+path_x_smooth                                       = [exp_smooth(path_x[i], α) for i in 1:len]
+path_y_smooth                                       = [exp_smooth(path_y[i], α) for i in 1:len]  
+frame_points                                        = range(1,length(path_x_smooth[25]), step=1)
+pathing                                             = control_point_functions(path_x_smooth, path_y_smooth, frame_points)
+
+""" --- Control Point Generation Debugging ---
+Different plotting routines to check if all functions are well-behaved and the results create continuous CPS motion.
+Particularly for control point 33, which is the outer point of the jellyfish flap is good for checks.
+Function to display a plot of the actual jelly shape at a specific frame. 
+140 frames equals 1 period -> Should be changed to numerical time.
+140 / ~60 (dimensionless period) -> dimensionless time?
+"""
+frame_check     =   100
+cp_check        =   33
+# display(Plots.plot(cps_list_new[frame_check][1,:], cps_list_new[frame_check][2,:], xlabel="x-coordinate", ylabel="y-coordinate", title="Jellyfish shape frame $frame_check"))
+display(Plots.plot(pathing[cp_check](collect(0:1:500))[1], xlabel="frame number", ylabel="x-coordinate", title="x-pathing of CP33")) # control point pathing
+# display(Plots.plot!(pathing[cp_check](0)[1] .+ accumulate(+,[vel_chan[cp_check](i)[1] for i in 0:1:500]),xlabel="frame number", ylabel="x-coordinate", title="x-velocity of CP$cp_check" )) # control point velocity
+# display(Plots.plot([get_area(cps_at_time(pathing, 105, t; ThreeD=false) .* D) for t in 1:1:500]/get_area(cps_at_time(pathing,105,1) .* D), xlabel="frame number", ylabel="Relative Area", title="Area Relative to Initial Area"))
+
+""" --- Simulation Setup 1 ---
+1. Define the starting location for the jellyfish.
+2. Setup the simulation 'environment' for the jellyfish. Requires input from the simulation parameters above.
+3. Viscosity is calculated from velocity and length scale and the Reynolds number.
+4. The body is constructed using the DynamicNurbsBody from the ParametricBodies package.
+5. The knots array is automatically generated from the polynomial degree and number of control points.
+6. Weights are all put to 1 for all control points.
+7. Can be setup with either the BiotSavartBCs or a general WaterLily simulation.
+8. Domain size and inflow velocity can be adjusted in here. --> Might want to move this to input parameters in some way.
+
+Convergence studies regarding the following simulation parameters should be done:
+Naturally, D = 2ᵖ
+Lets keep Re and U constant.
+ϵ and thk should definitely be checked for its influence on the forces.
+"""
+
+cps_start = cps_at_time(pathing, 105, 0; ThreeD=false) # defined from t = 0 to t = 545, which are actually frames.
+
+@inline function TwoDimJellyfish(::Type{T}=Float32; new_cps_list, D=2^7, Re=302, U=1, ϵ=0.5, thk=2ϵ+√3, deg, mem=Array, use_biotsavart=false) where {T<:AbstractFloat}
+    ν           =   U * D / Re
+
+    cps         =   new_cps_list .* 1 .* D .+ SA{T}[2D, 2.5D]
+    degree      =   deg
+    n_ctrl      =   size(cps, 2)
+    weights     =   ones(T, n_ctrl)
+    knots       =   T.(clamped_uniform_knots(degree, n_ctrl))
+    curve       =   NurbsCurve(cps, knots, weights)
+    body        =   DynamicNurbsBody(curve; thk=thk, boundary=true)
+
+    return use_biotsavart ? BiotSimulation((6D, 6D), (0,0), D; U, ν, body, T, mem, ϵ) : Simulation((6D, 6D), (0,0), D; U, ν, body, T, mem, ϵ)
 end
 
-function cps_at_time(interp_funcs, Npoints, t)
-    cps_t = SMatrix{2,Npoints,Float64}(hcat([f(t) for f in interp_funcs]...) )
-    return cps_t
-end
+""" --- Simulation Setup 2 ---
+In this part the actual simulation can be run. 
+1. Input for this is all defined above using the simulation parameters. The starting position of the jellyfish is defined in the above section from cps_start.
+2. The body is updated each timestep using the ParametricBodies update functionality
+3. The sim / flow is updated with sim_step.
+4. Pressure solver statistics can be put on to check the performance of WaterLily.
 
-t_points = range(1,length(path_x_smooth[25]), step=1)
-velocity, pathing = control_point_functions(path_x_smooth, path_y_smooth, t_points)
+Currently this is able to compute force, acceleration, velocity, displacement, pressure plots and vorticity plots/gif.
+All plotting routines for the above parameters are currently set to true, but can be commented to remove them. --> Add an optionality to put each parameter plot either on or off.
 
-# vel_25 = [pathing[25](t) for t in t_points]
-# display(Plots.plot(t_points[2:end], vel_25))
-
+Then there is also the possibility to write all output into a CSV-file for easier computation.
+"""
 # plt = Plots.plot()
-# for i in [1, 10, 50]
-#     pts = [pathing[i](t) for t in t_points]
-#     xs = getindex.(pts, 1)
-#     # ys = getindex.(pts, 2)
-#     Plots.plot!(xs, label="CP $i")
-# end
-# Plots.plot!(xlabel="x", ylabel="y", legend=:false)
-# display(plt)
-
-cps_start = cps_at_time(pathing, 105, 0) # defined from t = 0 to t = 545, which are actually frames.
-
-# cps25_traj = cps_at_time(pathing, 105, collect(0:1:545))[25] * D
-cps33_traj = pathing[33](collect(0:1:500))[1]
-# cps25_traj_vel = pathing[25](0)[1] .+ accumulate(+,[velocity[25](i)[1] for i in 0:1:500])
-
-
-# cps25_traj_vel = cps_start[25] + cps_at_time(velocity, 105, collect(0:1:545))[25] * 0.1 * D
-plt = Plots.plot(cps33_traj, xlabel="time",ylabel="x-coordinate CP33", title="CP33 Displacement")
-# Plots.plot!(cps25_traj_vel)
-display(plt)
-# plt = Plots.plot(cps_start[1,:], cps_start[2,:])
-# for t in 41:55
-#     cps_n = cps_at_time(pathing, 105, t)
-#     Plots.plot!(cps_n[1,:], cps_n[2,:])
+# for t in [54.95, 55.05, 55.15, 55.20, 55.25, 55.30, 56]
+#     Plots.plot!(cps_at_time(pathing, 105, t)[1,:],cps_at_time(pathing, 105, t)[2,:], xlims=(1,1.25), ylims=(0.25,0.50))
 # end
 # display(plt)
 
-# time = range(0,96;step=3)
-# # new_cps_list = [make_circle_timed_sin_motion(Float64, 25, t; radius=0.25,freq=0.01, amplitude=(0.25, 0.25)) for t in time]
-# @show new_cps_list
-# # sim             = ThreeDimJellyfish(; new_cps_list, D, Re, U, ϵ, thk, deg, mem=Array, use_biotsavart=true) 
-# # sim             = ThreeDimSphere(; new_cps_list, D, Re, U, ϵ, thk, deg, mem=Array, use_biotsavart=true)
+"""
+Added Mass from MCHenry 2003: Hemiellipsoidal approach
+A = α * ρ * Vₛ * acc
+α = (2h/d)^(1.4)        Added mass coefficient, h and d are the bell shape parameters.
+Vₛ = π * d^2 * hₛ / 6    hₛ is the cavity height, d is cavity diameter, both supposedly a function of time.
+For Sarsia sp. the max diameter is 1.25 cm during expansion. 1.15 cm during contraction.
+Height is 1.20 cm during the expansion phase. 1.40 cm during contraction.
+Cavity volume is very variable, average at about 0.80 cm.
+"""
+
+# falling body acceleration term
+fall!(flow,t;acceleration) = for i ∈ 1:ndims(flow.p)
+    WaterLily.@loop flow.f[I,i] += acceleration[i] over I ∈ CartesianIndices(flow.p)
+end
+
+function run_jelly_simulation(cps_start, D, Re, U, ϵ, thk, deg, pathing)
+    sim         = TwoDimJellyfish(; new_cps_list=cps_start, D, Re, U, ϵ, thk, deg, mem=Array, use_biotsavart=true)
+    forces      = []; forces_filt = []; forces_out = []; time = []; time_sim = []; timesteps = []; displacement = []; velocity = []; acceleration = []
+    n_cps       = length(cps_start)
+    cps_paths_x = [[] for _ in 1:n_cps]
+    prev_force  = 0
+    duration    = 25; t₀ = round(sim_time(sim)); step = 0.1
+    t0 = 0; a0 = 0; v0 = 0; p0 = 0; Area = get_area(cps_start .* sim.L)
+    hₛ = 0.85*D; dₛ=0.8*D; d=1.2*D; h=1.3*D
+    mₐ = (2*h / d)^1.4 * (π * dₛ^2 * hₛ) / (6)
+
+    for tᵢ in range(t₀, t₀ + duration; step)        
+        t = sum(sim.flow.Δt[1:end-1])
+        while t < tᵢ * sim.L / sim.U
+            cps             = cps_at_time(pathing, 105, t) .* D .+ SA{T}[2D, 2.5D]
+
+            sim.sim.body    = ParametricBodies.update!(sim.sim.body, cps, sim.flow.Δt[end])
+            # sim_step!(sim, t/sim.L; remeasure = true)
+
+            measure!(sim)
+            biot_mom_step!(sim.flow,sim.pois,sim.ω,sim.x₀,sim.tar,sim.ftar;
+                           fmm=sim.fmm,udf=fall!,acceleration=SA[-a0,0.f0],U=SA[-v0,0.0]) # change of frame
+            
+            force           =   -WaterLily.pressure_force(sim)[1]
+            filt_force      =   0.1 * force + (1-0.1) * prev_force
+            Δt              =   sim.flow.Δt[end]
+            accel           =   (filt_force + mₐ * a0) / (Area + mₐ)
+            p0              +=  Δt * (v0 + Δt * accel / 2.)
+            v0              +=  Δt * accel
+            a0              =   accel
+            @show t, force
+
+            push!(velocity, v0)
+            push!(displacement, p0)
+            push!(acceleration, a0)
+            push!(timesteps, sim.flow.Δt[end])
+            push!(time, t * sim.U / sim.L)
+            push!(forces, force)
+            push!(forces_filt, filt_force)
+            push!(time_sim, sim_time(sim))
+            for (i, p) in enumerate(cps[1, :])
+                push!(cps_paths_x[i], p)
+            end
+
+            t0 = t; t += sim.flow.Δt[end]; prev_force = filt_force
+        end
+
+        force_out   =   -WaterLily.pressure_force(sim) / (sim.L * 0.5)
+        R           =   inside(sim.flow.p)
+
+        gen_p_plots(sim, tᵢ)
+        # gen_n_plots(sim, tᵢ)
+        gen_ω_gif(sim, tᵢ, R)
+        push!(forces_out, force_out[1]) # plot
+        println("tU/L=", round(tᵢ, digits = 4), ", Δt=", round(sim.flow.Δt[end], digits = 3))
+    end 
+
+    # comp_force = Area .* diff(v0) ./ sim.flow.Δt
+    display(Plots.plot(time, acceleration, xlabel="tU/L", ylabel="acceleration", title="Acceleration of Jellyfish"))
+    display(Plots.plot(cps_paths_x[33], xlabel= "tU/L", ylabel= "displacement", title="True displacement CP33"))
+    display(Plots.plot(time, forces, xlabel="tU/L", ylabel="force", title="Pressure Force on Jellyfish"))
+    display(Plots.plot(time, cumsum(forces),xlabel="tU/L", ylabel="force",title="Jellyfish Cumulative Force"))
+    display(Plots.plot(time, displacement,xlabel="tU/L", ylabel="displacement",title="Jellyfish Displacement"))
+    display(Plots.plot(time, velocity,xlabel="tU/L", ylabel="velocity",title="Jellyfish Velocity"))
+    # display(Plots.plot(get_area(cps_start.*D) * diff(velocity)./ timesteps[2:end], xlabel= "timesteps",ylabel="Force", title="Force from F=ma"))
+
+    return forces, forces_out, forces_filt, time, time_sim, timesteps, cps_paths_x, displacement, velocity, acceleration
+end
+
+WaterLily.logger("test_psolver")
+forces, force_out, force_filt, time, time_sim, timesteps, cps_paths_x, displacement, velocity, acceleration = run_jelly_simulation(cps_start, D, Re, U, ϵ, thk, deg, pathing)
+plot_logger("test_psolver")
+savefig("psolver.png")
+
+""" --- Simulation results bookkeeping --- 
+For some reason, the GIF maker functions decided not to work anymore... They partly do now
+"""
+
+# open("results.csv", "w") do io
+#     println(io, "forces,time,time_sim,timesteps,displacement,velocity,acceleration")
+#     n = length(forces)
+#     for i in 1:n
+#         f       = forces[i]
+#         tnum    = time[i]
+#         tsim    = time_sim[i]
+#         tsteps  = timesteps[i]
+#         dis     = displacement[i]
+#         vel     = velocity[i]
+#         acc     = acceleration[i]
+#         println(io, "$f,$tnum,$tsim,$tsteps,$dis,$vel,$acc")
+#     end
+# end
+
+# create_gif_from_folder("Prolate Jellyfish/Normals_check/", "Prolate Jellyfish/normals_output.gif", delay=0.05)
+# create_gif_from_folder("Prolate Jellyfish/Pressure_check/", "Prolate Jellyfish/pressure_output.gif", delay=0.05)
+create_gif_from_folder("Prolate Jellyfish/Vorticity_check/", "Prolate Jellyfish/vorticity_output.gif", delay=0.05)
+# create_gif_from_folder("Pressure_check/", "pressure_output.gif", delay=0.05)
+
+""" --- Making the Jellyfish Move Forward ---
+0st try, using generated velocity on body boundary with a Ufunc.
+1st try, directly updating the offset .+ SA{T}[2D, 2.5D] with its new position: .+ SA{T}[2D + p0, 2.5D]
+    Forces blew up to 10^13 so had to stop the simulation.
+    Possible reasons for blow up:
+        - Direct motion through offset change simply not viable --> Try moving the static jelly forward in this way (I think that worked??)
+        - Motion becomes simply too large at once for the solver to be able to handle it --> Split the simulation into a first simulation to define forward velocity and displacement, second one to actually make the jelly move.
+2nd try, using the statically defined velocity/position change and implementing this into a new simulation
+"""
+
+function get_kinematics()
+    kinematic_df = CSV.read("results.csv", DataFrame)
+    # kinematic_df = [forces, numerical time, simulation time, time steps, displacement, velocity, acceleration]
+    p = kinematic_df[:, 5]
+    v = kinematic_df[:, 6]
+    a = kinematic_df[:, 7]
+    return (p=p, v=v, a=a)
+end
+
+# kinematics = get_kinematics()
+
+@inline function MovingJellyfish(kinematics, ::Type{T}=Float32; new_cps_list, D=2^7, Re=302, U=1, ϵ=0.5, thk=2ϵ+√3, deg, mem=Array, use_biotsavart=false) where {T<:AbstractFloat}
+
+    motion_map(x,t) = SA[x[1] + kinematics.p[t], x[2]] ## When sims go out of phase this will definitely fuck up
+
+    cps             = new_cps_list[1] .* D/2 
+    degree          = deg
+    n_ctrl          = size(cps, 2)
+    weights         = ones(T, n_ctrl)
+    knots           = T.(clamped_uniform_knots(degree, n_ctrl))
+    curve           = NurbsCurve(cps, knots, weights)
+
+    body            = ParametricBody(curve;map=motion_map,ndims=2)
+
+    ν               = U * D / Re
+
+    return use_biotsavart ? BiotSimulation((6D, 6D), (0,0), D; U, ν, body, T, mem, ϵ) : Simulation((6D, 6D), (0,0), D; U, ν, body, T, mem, ϵ)
+end
+
+""" --- Validation of the 2D model ---
+Use the kinematics in Jellyfish_Kinematics.xlsx to validate the results of the 2D WaterLily model.
+"""
 
 # function jelly_sdf(x, t) ## Option, but not differentiable for WaterLily
 #     D = 2^5; Re = 302; U = 1; ϵ = 0.75; thk = 2ϵ+√3; deg = 2; n_ctrl = 105
@@ -140,184 +331,88 @@ display(plt)
 #     body  = DynamicNurbsBody(curve; thk=thk, boundary=true)
 #     return sdf(body, x, t)
 # end
-# control points defining bell shape
 
-function jelly_sdf(x, t)
-    D = 2^5; ϵ = 0.75; thk = 2ϵ+√3; deg = 2; n_ctrl = 105
-    cps = cps_at_time(pathing, n_ctrl, t)
-    weights = ones(Tp, n_ctrl)
-    knots = Tp.(clamped_uniform_knots(deg, n_ctrl))
-    curve = NurbsCurve(cps .* (D), knots, weights)
-    body  = DynamicNurbsBody(curve; thk=thk, boundary=true)
-    # display(Plots.plot(body))
-    # dmin = minimum(norm(x .- cp) for cp in cps_list_new[1])
-    return sdf(body,x,t)   # 0.05 = approximate body thickness
+# jelly_map(x,t) = x
+# jelly_shape = AutoBody(jelly_sdf, jelly_map)
+
+# # # Make grid
+# # xs = range(-6.25, 6.25, length=200)
+# # ys = range(-6.25, 6.25, length=200)
+# # X, Y = [x for x in xs, y in ys], [y for x in xs, y in ys]  # coordinate mesh
+
+# # # Choose times you want to visualise
+# # times = [0,30]
+
+# # plt = Plots.plot(; aspect_ratio=:equal, legend=:topright,
+# #            title="Jellyfish geometry evolution", xlabel="x", ylabel="y")
+# # for t in times
+# #     # Compute SDF field at this t
+# #     Z = [ϕ(SA{Tp}[x,y], t) for y in ys, x in xs]
+
+# #     # Plot φ=0 contour (the jellyfish boundary)
+# #     Plots.contour!(xs, ys, Z; levels=[0.0], label="t = $(round(t,digits=2))")
+# # end
+# # display(plt)
+
+""" --- A 3D Jellyfish ---
+Use a mapping function to revolve the 2D jellyfish around its axis of symmetry.
+"""
+
+function make_3D_Jellyfish(cps_start, D, Re, U, deg, ϵ, T)
+    rev_map(x,t)    = SA[(x[1]), hypot(x[2], x[3]) ] 
+    cps_j           = cps_start  .* D .+ SA_F32[0.5D; 0]
+    degree          = deg
+    n_ctrl          = size(cps_j, 2)
+    weights_j       = ones(T, n_ctrl)
+    knots_j         = T.(clamped_uniform_knots(degree, n_ctrl))
+    curve_j         = NurbsCurve(cps_j, knots_j, weights_j)
+    body            = ParametricBody(curve_j; map=rev_map, ndims=3)
+    ν               = U * D / Re
+    sim             = BiotSimulation((3D, D, D), (0,0,0), D; U, ν, body, T, mem=Array, ϵ)
 end
 
-jelly_map(x,t) = AbstractMatrix{2,105,Float64,210}(cps_updates)
-jelly_shape = AutoBody(jelly_sdf, jelly_map)
+sim                 = make_3D_Jellyfish(cps_start, D, Re, U, deg, ϵ, T)
+visualize_sdf_3D(sim.body; D=D, n=50, surface_only=false)
 
-xs = range(-6.25, 65, length=200)
-ys = range(-20, 20, length=200)
-Z = [jelly_sdf([x,y], 1) for y in ys, x in xs]
+Makie.inline!(false)
 
-plt = Plots.plot(cps_at_time(pathing,105,0)[1,:]*D, cps_at_time(pathing,105,0)[2,:]*D; aspect_ratio=:equal, legend=:topright,
-           title="Jellyfish geometry evolution", xlabel="x", ylabel="y")
-Plots.contour!(xs, ys, Z)
-display(plt)
+begin
+    # Define geometry and motion on GPU
+    sim             = make_3D_Jellyfish(cps_start, D, Re, U, deg, ϵ, T)#mem=CUDA.CuArray);
+    cps             = cps_at_time(pathing, 105, 0.05) .* D .+ SA_F32[0.5D; 0]
+    sim.sim.body    = ParametricBodies.update!(sim.sim.body, cps, sim.flow.Δt[end])
+    
+    sim_step!(sim,sim_time(sim)+0.05; remeasure = true);
+    @show sim_time(sim)
 
-# sim = BiotSimulation((6D,6D), (0,0), D; U=1, ν=U*D/Re, body=jelly_shape, T=T, mem=Array, ϵ=0.75)
-function run_jelly_simulation(cps_start, D, Re, U, ϵ, thk, deg, pathing)
-    sim = TwoDimJellyfish(; new_cps_list=cps_start, D, Re, U, ϵ, thk, deg, mem=Array, use_biotsavart=true)
-    forces = []; forces_out = []; time = []; time_sim = []; timesteps = []; displacement = []; velocity = []; acceleration = []
-    n_cps = length(cps_start)
-    cps_paths_x = [[] for _ in 1:n_cps]
-    cps = cps_start .* D .+ SA{T}[2D, 2.5D]
-    duration = 10
-    step = 0.1
-    t₀ = sim_time(sim)
-    Area = get_area(cps_start .* sim.L)
-    t0 = 0; a0 = 0; v0 = 0; p0 = 2*D
+    # Create CPU buffer arrays for geometry flow viz 
+    a               = sim.flow.σ
+    d               = similar(a,size(inside(a))) |> Array; # one quadrant
+    md              = similar(d, (1,2,2).*size(d))
 
-    @gif for tᵢ in range(t₀, t₀ + duration; step)
-        t = sum(sim.flow.Δt[1:end-1])
-        while t < tᵢ * sim.L / sim.U
-            cps = cps_at_time(pathing, 105, t) .* D .+ SA{T}[2*D-0.1*t, 2.5D]
-            sim.sim.body = ParametricBodies.update!(sim.sim.body, cps, sim.flow.Δt[end])
-            sim_step!(sim, t / sim.L; remeasure = true)
-            force = -WaterLily.pressure_force(sim) #/ (sim.L * 0.5)
-            Δt = sim.flow.Δt[end]
-            @show force, p0
-            accel = (force[1] / Area)
-            p0 += Δt * (v0 + Δt * accel / 2.)
-            # @show force, p0
-            push!(displacement, p0)
-            v0 += Δt * accel
-            push!(velocity, v0)
-            a0 = accel
-            push!(acceleration, a0)
-            push!(timesteps, sim.flow.Δt[end])
-            push!(forces, force[1])
-            push!(time, t)
-            push!(time_sim, sim_time(sim))
-            for (i, p) in enumerate(cps[1, :])
-                push!(cps_paths_x[i], p)
-            end
-            t0 = t; t += sim.flow.Δt[end]
-        end
-        force_out = -WaterLily.pressure_force(sim) / (sim.L * 0.5)
-        push!(forces_out, force_out[1]) # plot
-        R = inside(sim.flow.p)
-        gen_p_plots(sim, t)
-        gen_ω_gif(sim, t, R)
-        println("tU/L=", round(tᵢ, digits = 4), ", Δt=", round(sim.flow.Δt[end], digits = 3))
-    end
+    # Set up geometry viz
+    geom            = geom!(md,d,sim) |> Observable;
+    ω               = ω!(md, d, sim) |> Observable
 
-    diffs = [(cps_paths_x[25][i+1] - cps_paths_x[25][i]) / timesteps[i+1] for i in 1:length(cps_paths_x[25])-1]
+    fig             = GLMakie.Figure()
+    ax              = GLMakie.Axis3(fig[1, 1], aspect = :data)
 
-    display(Plots.plot(diffs, xlabel = "numerical time", ylabel = "velocity", title = "Num. Velocity CP25", label = "cps_x 25"))
-    display(Plots.plot(cps_paths_x[25]))
-    display(Plots.plot(forces, xlabel="numerical time", ylabel="force", title="Pressure Force on Jellyfish"))
-    display(Plots.plot(time))
-    display(Plots.plot(time_sim))
+    GLMakie.mesh!(ax, geom, alpha=0.1, color=:red)
+    GLMakie.volume!(ax, ω;algorithm=:mip,transparency=true,alpha=0.5,colormap=:algae,colorrange=(1,10))
 
-    return forces, time, time_sim, timesteps, cps_paths_x, forces_out, displacement, velocity, acceleration
-end
-
-# forces, time, time_sim, timesteps, cps_paths_x, forces_out, displacement, velocity, acceleration = run_jelly_simulation(cps_start, D, Re, U, ϵ, thk, deg, pathing)
-# # steps = 3 * duration / length(new_cps_list)
-# # #duration= 15; t₀=round(sim_time(sim))
-# # # time = range(t₀,t₀+duration; step=0.1)
-# # # results = [get_forces!(sim, tᵢ, duration, new_cps_list; ThreeD=ThreeD) for tᵢ in time]
-# plt = Plots.plot(new_cps_list[1][1,:] .* sim.L, new_cps_list[1][2,:] .* sim.L)
-# for i in 2:10
-#     Plots.plot!(new_cps_list[i][1,:] .* sim.L, new_cps_list[i][2,:] .* sim.L)
-# end
-# display(plt)
-
-# time_var_forces = [-0.0, -0.0, -0.6248582294427081, -0.005061873864426886, -0.37442454755814936, -0.01605573341883826, -0.009236531964714079, -0.22161401202437503, 0.019368927307737316, 0.020002712081691243, 0.042705200323929604, 0.09307403688843863, 0.07772224653716239, 0.05685283314541367, 0.10501777004641227, 0.12250975391269825, 0.24952699974113385, 0.24139688881341925, 0.30425365131837623, 0.30295250124172757, 0.3331982204033288, 0.35788497607340286, 0.33265042931371563, 0.3664960755127822, 0.2903497526491336, 0.3350858612025692, 0.2654395552757536, 0.21092639946056585, 0.12118992919325056, 0.09072700576825277, -0.02251472057020272, -0.09051344900463443, -0.17420183853317128, -0.26655715183261375, -0.3361958247432747, -0.36944896246518855, -0.42248826069768697, -0.4453092361478359, -0.43906053457919114, -0.4495830269476784, -0.42923982163379826, -0.4089163663772837, -0.3280622522742078, -0.2709390846068003, -0.10290235562790784, -0.1314945005144797, 0.0458876246316795, -0.03525261407152236, 0.5066837316191197, -0.0429809828891905, 0.5199857063343001, 0.40702431580547227, 0.5233668702684042, 0.46247917703083097, 0.527653234209037, 0.5392361242249277, 0.5008517441500759, 0.4736033254759846, 0.5975013312479973, 0.2108425511582861, 0.15180435111923352, 0.15400901263966427, -0.060481720170621145, -0.21354211342224302, -0.24648592461466734, -0.31917506649849514, -0.2902177503539219, -0.5146960385497652, -0.35302197670359803, -0.5087807767034035, -0.34188222580030847, -0.47153882674218806, -0.3501925204898164, -0.2886822873949755, -0.24957927157219828, -0.20177407393993008, -0.12034150086756057, -0.07111462960627968, 0.025638115242644588, 0.06260159188066128, 0.18719980313207213, 0.2656391198127608, 0.27508398787629884, 0.34454713035084517, 0.4041958130321467, 0.40580039880487817, 0.9096987782875772, 0.5872171928056722, 0.33081978696414893, 0.25046728056586764, 0.22362933019177778]
-
-# forces = getindex.(results, 1)
-# a = getindex.(results, 2)
-# v = getindex.(results, 3)
-# s = getindex.(results, 4)
-# # t = getindex.(results, 5)
-# display(Plots.plot(time, forces, xlabel="Time", ylabel="Force", title="Force vs Time"))
-# display(Plots.plot(time, a, xlabel="Time", ylabel="Acceleration", title="Acceleration vs Time"))
-# display(Plots.plot(time, v, xlabel="Time", ylabel="Velocity", title="Velocity vs Time"))
-# display(Plots.plot(time, s, xlabel="Time", ylabel="Position", title="Position vs Time"))
-# t_scale = duration / length(new_cps_list)
-# diff_xs = []
-# for i in 1:length(path_x)-1
-#     diff_x = (path_x[i+1] - path_x[i]) / t_scale
-#     push!(diff_xs, diff_x)
-# end
-# display(Plots.plot(diff_xs, xlabel="frame number", ylabel="Velocity", title="Velocity CP25", label="cps_x 25"))
-
-# WaterLily.logger("test_psolver")
-# res = simulate_Jelly!(sim, cps_start; duration=9, period=period, step=0.1, remeasure=true, plotbody=false, ThreeD=ThreeD)
-# plot_logger("test_psolver")
-# savefig("psolver.png")
-
-
-function visualize_sdf_3D(body; D=2^7, n=75, T=Float32, surface_only=true)
-    xs = range(-D, D, length = n)
-    ys = range(-D, D, length = n)
-    zs = range(-D, D, length = n)
-
-    φ = [sdf(body, SA[T(x), T(y), T(z)]) for x in xs, y in ys, z in zs]
-    @show φ
-    fig = Figure(; size = (900, 700))
-    ax = Axis3(fig[1, 1], title = "Signed Distance Field")
-
-    xside = xs[1] .. xs[end]           
-    yside = ys[1] .. ys[end]
-    zside = zs[1] .. zs[end]
-
-    if surface_only
-        GLMakie.contour!(ax, xside, yside, zside, φ;
-            levels = [0.0],
-            colormap = :plasma,
-            transparency = true,
-            alpha = 0.9
-        )
-    else
-        GLMakie.volume!(ax, xside, yside, zside, φ;
-            colormap = :algae,
-            # colorrange = (-D/10, D/10),
-            transparency = true,
-            alpha = 0.75
-        )
-        GLMakie.contour!(ax, xside, yside, zside, φ;
-            levels = [0.0],
-            colormap = :plasma,
-            transparency = true,
-            alpha = 0.5
-        )
-    end
-    GLMakie.xlims!(ax, xs[1], xs[end]); GLMakie.ylims!(ax, ys[1], ys[end]); GLMakie.zlims!(ax, zs[1], zs[end])
     fig
-    # ADD save functionality 
 end
 
-revolve_map(x,t) = SA[x[1], hypot(x[2], x[3])]
+GLMakie.record(fig,"3D_moving_jelly.mp4",1:25; framerate=5) do frame
+    cps             = cps_at_time(pathing, 105, frame) .* D .+ SA_F32[0.5D; 0]
+    sim.sim.body    = ParametricBodies.update!(sim.sim.body, cps, sim.flow.Δt[end])
+    
+    @show frame
 
-# R = 1.0
-# cps = SA_F32[
-#     R   R   0  -R  -R  -R   0   R   R;
-#     0   R   R   R   0  -R  -R  -R   0
-# ] * D/2
-# weights = SA_F32[1., √2/2, 1., √2/2, 1., √2/2, 1., √2/2, 1.]
-# knots   = SA_F32[0,0,0, 1/4,1/4, 1/2,1/2, 3/4,3/4, 1,1,1]
-# curve   = NurbsCurve(cps, knots, weights)
-# sphere = ParametricBody(curve; map=revolve_map, ndims=3)
+    sim_step!(sim,sim_time(sim)+0.05; remeasure = true);
+    geom[]          = geom!(md,d,sim);
+    ω[]             = ω!(md,d,sim);
+end
 
-# cps_j = new_cps_list[1] * D/2
-# degree = deg
-# n_ctrl = size(cps_j, 2)
-# weights_j = ones(T, n_ctrl)
-# knots_j = T.(clamped_uniform_knots(degree, n_ctrl))
-# curve_j = NurbsCurve(cps_j, knots_j, weights_j)
-# body = ParametricBody(curve_j; map=revolve_map, ndims=3)
 
-# visualize_sdf_3D(sim.body; D=D, n=50, surface_only=false)
+

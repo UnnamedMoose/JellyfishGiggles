@@ -22,7 +22,7 @@ end
 
 function get_curves(new_cps_list)
     colors = [:red, :blue, :green, :orange, :purple, :yellow, :brown, :pink, :gray, :cyan]
-    plt = Plots.plot(title="NURBS Curves")
+    plt = plot(title="NURBS Curves")
     for (i,cps) in enumerate(new_cps_list)
         T = Float32
         n_ctrl = size(cps, 2)
@@ -31,17 +31,17 @@ function get_curves(new_cps_list)
         knots = T.(clamped_uniform_knots(degree, n_ctrl))
         int_curve = NurbsCurve(cps, knots, weights)
         x, y = cps[1, :], cps[2, :]
-        Plots.plot!(plt, int_curve, 
+        plot!(plt, int_curve, 
         color=colors[i], 
         fillalpha=0.2, 
         alpha = 0.5,
         add_cp=false, 
         label="Curve $i", 
         legend=:topright)
-        # println("Self-intersection? ", self_intersects(x,y))
+        println("Self-intersection? ", self_intersects(x,y))
     end
     for (i,cps) in enumerate(new_cps_list)
-        Plots.scatter!(cps[1,:], cps[2,:],color=colors[i])
+        scatter!(cps[1,:], cps[2,:],color=colors[i])
     end
     display(plt)
 end
@@ -76,7 +76,7 @@ function get_shape_error(new_cps_list)
     end
 
     # plot(1:length(areas), areas; label="Area", xlabel="t/T", ylabel="Area", linewidth=2, legend=:topleft, title="Area per time step")
-    plt = Plots.plot(1:length(rel_area), rel_area; label="Relative Area [-]", xlabel="t/T [-]", ylabel="Relative Area [-]",  linewidth=2, legend=:false, linestyle=:dash, title="Relative Area per time step")
+    plt = plot(1:length(rel_area), rel_area; label="Relative Area [-]", xlabel="t/T [-]", ylabel="Relative Area [-]",  linewidth=2, legend=:false, linestyle=:dash, title="Relative Area per time step")
     display(plt)
     savefig(plt, "relative_area.png")
 end
@@ -155,6 +155,7 @@ function get_forces!(sim; duration=1,step=0.1,verbose=true)
             sim_step!(sim, tᵢ; remeasure=true)
             raw    = WaterLily.total_force(sim)
             scaled = raw ./ (0.5 * sim.L * sim.U^2)
+            @show scaled
             push!(f_hist, scaled[1])
             # if in_period
             #     periodic_force += scaled[1]
@@ -252,8 +253,8 @@ function generate_sdf_plots(new_cps_list, thk=2.0, D=2^7, Tp=Float32, degree=3)
         ys = range(0, 6.25 * D, length=200)
         Z = [sdf(body, SA[x, y]) for y in ys, x in xs]
 
-        signed_df = Plots.heatmap(xs, ys, Z; color=:viridis, aspect_ratio=1, title="Signed Distance Field $i")
-        Plots.contour!(xs, ys, Z, levels=[0.0], linewidth=2, color=:red)  # Contour where sdf=0
+        signed_df = heatmap(xs, ys, Z; color=:viridis, aspect_ratio=1, title="Signed Distance Field $i")
+        contour!(xs, ys, Z, levels=[0.0], linewidth=2, color=:red)  # Contour where sdf=0
         # plot!(body.curve, shift=(0.5, 0.5), alpha=0.8, add_cp=true)
         display(signed_df)
         savefig(signed_df, joinpath(save_dir, "sdf_nurbs_$(i).png"))
@@ -379,13 +380,13 @@ function check_geometry(control_points; name="Curve", doplot=true)
     end
 
     if doplot
-        plt1 = Plots.plot(x, y, aspect_ratio=1, title="$name: Geometry", label="Curve", lw=2)
-        Plots.scatter!(plt1, x, y, label="Control points", ms=3)
+        plt1 = plot(x, y, aspect_ratio=1, title="$name: Geometry", label="Curve", lw=2)
+        scatter!(plt1, x, y, label="Control points", ms=3)
 
-        plt2 = Plots.plot(1:n, curvature, title="$name: Curvature profile", label="Curvature", lw=2)
-        Plots.vline!(plt2, high_curv_idx, label="High κ", c=:red, ls=:dash)
+        plt2 = plot(1:n, curvature, title="$name: Curvature profile", label="Curvature", lw=2)
+        vline!(plt2, high_curv_idx, label="High κ", c=:red, ls=:dash)
 
-        display(Plots.plot(plt1, plt2, layout=(1, 2), size=(1000, 400)))
+        display(plot(plt1, plt2, layout=(1, 2), size=(1000, 400)))
     end
 
     return curvature
